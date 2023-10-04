@@ -1,0 +1,97 @@
+﻿@page "/Metrics/{applicationInstanceId?}"
+
+@using Aspire.Dashboard.Components.Dialogs
+@using Aspire.Dashboard.Model
+@using Aspire.Dashboard.Model.Otlp
+@using Aspire.Dashboard.Otlp.Model
+@using Aspire.Dashboard.Otlp.Storage
+@using Microsoft.Fast.Components.FluentUI
+@using System.Web
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@implements IDisposable
+
+<h1>Traces</h1>
+
+<div>
+    <FluentStack Orientation="Orientation.Vertical">
+        <FluentToolbar Orientation="Orientation.Horizontal">
+            <FluentSelect TOption="ApplicationViewModel"
+                          Items="@_applications"
+                          OptionValue="@(c => c.Id)"
+                          OptionText="@(c => c.Name)"
+                          @bind-SelectedOption="_selectedApplication"
+                          @bind-SelectedOption:after="HandleSelectedApplicationChangedAsync" />
+        </FluentToolbar>
+    </FluentStack>
+</div>
+
+@code {
+    private static readonly ApplicationViewModel AllApplication = new ApplicationViewModel { Id = null, Name = "(All)" };
+
+    private List<ApplicationViewModel> _applications = default!;
+    private ApplicationViewModel _selectedApplication = AllApplication;
+    private Subscription? _applicationsSubscription;
+    private Subscription? _metricsSubscription;
+
+    [Parameter]
+    public string? ApplicationInstanceId { get; set; }
+
+    [Inject]
+    public required TelemetryRepository TelemetryRepository { get; set; }
+
+    [Inject]
+    public required TracesViewModel ViewModel { get; set; }
+
+    protected override Task OnInitializedAsync()
+    {
+        UpdateApplications();
+        _applicationsSubscription = TelemetryRepository.OnNewApplications(() => InvokeAsync(() =>
+        {
+            UpdateApplications();
+            StateHasChanged();
+        }));
+
+        return Task.CompletedTask;
+    }
+
+    protected override void OnParametersSet()
+    {
+        _selectedApplication = _applications.SingleOrDefault(e => e.Id == ApplicationInstanceId) ?? AllApplication;
+        ViewModel.ApplicationServiceId = _selectedApplication.Id;
+        UpdateSubscription();
+    }
+
+    private void UpdateApplications()
+    {
+        _applications = TelemetryRepository.GetApplications().Select(a => new ApplicationViewModel { Id = a.InstanceId, Name = a.ApplicationName }).ToList();
+        _applications.Insert(0, AllApplication);
+        UpdateSubscription();
+    }
+
+    private Task HandleSelectedApplicationChangedAsync()
+    {
+        NavigationManager.NavigateTo($"/Traces/{_selectedApplication.Id}");
+        return Task.CompletedTask;
+    }
+
+    private void UpdateSubscription()
+    {
+        // Subscribe to updates.
+        if (_metricsSubscription is null || _metricsSubscription.ApplicationId != _selectedApplication.Id)
+        {
+            _metricsSubscription?.Dispose();
+            _metricsSubscription = TelemetryRepository.OnNewMetrics(_selectedApplication.Id, async () =>
+            {
+                ViewModel.ClearData();
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
+    public void Dispose()
+    {
+        _applicationsSubscription?.Dispose();
+        _metricsSubscription?.Dispose();
+    }
+}

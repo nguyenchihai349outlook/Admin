@@ -103,7 +103,7 @@ public class TelemetryRepository
         return AddSubscription(applicationId, callback, _logSubscriptions);
     }
 
-    public Subscription OnNewMetrics(string applicationId, Func<Task> callback)
+    public Subscription OnNewMetrics(string? applicationId, Func<Task> callback)
     {
         return AddSubscription(applicationId, callback, _metricsSubscriptions);
     }
