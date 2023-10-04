@@ -1,4 +1,6 @@
 ﻿@page "/Metrics/{applicationInstanceId?}"
+@page "/Metrics/{applicationInstanceId}/Meter/{meterName}"
+@page "/Metrics/{applicationInstanceId}/Meter/{meterName}/Instrument/{instrumentName}"
 
 @using Aspire.Dashboard.Components.Dialogs
 @using Aspire.Dashboard.Model
@@ -11,7 +13,7 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<h1>Traces</h1>
+<h1>Metrics</h1>
 
 <div>
     <FluentStack Orientation="Orientation.Vertical">
@@ -23,19 +25,80 @@
                           @bind-SelectedOption="_selectedApplication"
                           @bind-SelectedOption:after="HandleSelectedApplicationChangedAsync" />
         </FluentToolbar>
+        <div class="page-content-area">
+            @if (_instruments?.Count > 0)
+            {
+                <FluentSplitter Style="height:100%" Panel1Size="450px">
+                    <Panel1>
+                        <FluentTreeView  Class="metrics-tree" @bind-CurrentSelected="_selectedTreeItem" @bind-CurrentSelected:after="HandleSelectedTreeItemChanged">
+                            <ChildContent>
+                                @foreach (var meterGroup in _instruments.GroupBy(i => i.Parent).OrderBy(g => g.Key.MeterName))
+                                {
+                                    <FluentTreeItem Class="metrics-tree-item" Text="@meterGroup.Key.MeterName" Data="@meterGroup.Key" title="@meterGroup.Key.MeterName">
+                                        @foreach (var instrument in meterGroup.OrderBy(i => i.Name))
+                                        {
+                                            <FluentTreeItem Class="metrics-tree-item" Text="@instrument.Name" Data="@instrument" title="@instrument.Name" />
+                                        }
+                                    </FluentTreeItem>
+                                }
+                            </ChildContent>
+                        </FluentTreeView>
+                    </Panel1>
+                    <Panel2>
+                        @if (_selectedTreeItem?.Data is OtlpMeter meter)
+                        {
+                            <h3>@meter.MeterName</h3>
+                            @foreach (var item in _instruments.Where(i => i.Parent == meter))
+                            {
+                                <p>@item.Name: @item.Description</p>
+                            }
+                        }
+                        else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
+                        {
+                            <h3>@instrument.Name</h3>
+                            <p>@instrument.Description</p>
+                        }
+                        else
+                        {
+                            <p>Select instrument.</p>
+                        }
+                    </Panel2>
+                </FluentSplitter>
+            }
+            else if (_instruments == null)
+            {
+                <div class="empty-content">
+                    <FluentIcon Icon="Icons.Regular.Size24.ChartMultiple" />&nbsp;Select an application to view metrics
+                </div>
+            }
+            else
+            {
+                <div class="empty-content">
+                    <FluentIcon Icon="Icons.Regular.Size24.ChartMultiple" />&nbsp;No metrics for the selected application
+                </div>
+            }
+        </div>
     </FluentStack>
 </div>
 
 @code {
-    private static readonly ApplicationViewModel AllApplication = new ApplicationViewModel { Id = null, Name = "(All)" };
+    private static readonly ApplicationViewModel SelectApplication = new ApplicationViewModel { Id = null, Name = "Select application..." };
 
     private List<ApplicationViewModel> _applications = default!;
-    private ApplicationViewModel _selectedApplication = AllApplication;
+    private ApplicationViewModel _selectedApplication = SelectApplication;
     private Subscription? _applicationsSubscription;
     private Subscription? _metricsSubscription;
+    private List<OtlpInstrument>? _instruments;
+    private FluentTreeItem? _selectedTreeItem;
 
     [Parameter]
     public string? ApplicationInstanceId { get; set; }
+
+    [Parameter]
+    public string? MeterName { get; set; }
+
+    [Parameter]
+    public string? InstrumentName { get; set; }
 
     [Inject]
     public required TelemetryRepository TelemetryRepository { get; set; }
@@ -57,22 +120,35 @@
 
     protected override void OnParametersSet()
     {
-        _selectedApplication = _applications.SingleOrDefault(e => e.Id == ApplicationInstanceId) ?? AllApplication;
+        _selectedApplication = _applications.SingleOrDefault(e => e.Id == ApplicationInstanceId) ?? SelectApplication;
         ViewModel.ApplicationServiceId = _selectedApplication.Id;
+        _instruments = !string.IsNullOrEmpty(_selectedApplication.Id) ? TelemetryRepository.GetInstruments(_selectedApplication.Id) : null;
         UpdateSubscription();
     }
 
     private void UpdateApplications()
     {
         _applications = TelemetryRepository.GetApplications().Select(a => new ApplicationViewModel { Id = a.InstanceId, Name = a.ApplicationName }).ToList();
-        _applications.Insert(0, AllApplication);
+        _applications.Insert(0, SelectApplication);
         UpdateSubscription();
     }
 
     private Task HandleSelectedApplicationChangedAsync()
     {
-        NavigationManager.NavigateTo($"/Traces/{_selectedApplication.Id}");
+        NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}");
         return Task.CompletedTask;
+    }
+
+    private void HandleSelectedTreeItemChanged()
+    {
+        if (_selectedTreeItem?.Data is OtlpMeter meter)
+        {
+            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{meter.MeterName}");
+        }
+        else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
+        {
+            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{instrument.Parent.MeterName}/Instrument/{instrument.Name}");
+        }
     }
 
     private void UpdateSubscription()

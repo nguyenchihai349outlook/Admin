@@ -1,10 +1,11 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Globalization;
 using Google.Protobuf.Collections;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry.Proto.Common.V1;
 using OpenTelemetry.Proto.Metrics.V1;
 using OpenTelemetry.Proto.Resource.V1;
 
@@ -20,8 +21,8 @@ public class OtlpApplication
     public string InstanceId { get; }
     public int Suffix { get; }
 
-    private readonly ReaderWriterLockSlim _metricsLock = new();
-    private readonly Dictionary<string, OtlpMeter> _meters = new();
+    private readonly ConcurrentDictionary<string, OtlpMeter> _meters = new();
+    private readonly ConcurrentDictionary<(string MeterName, string InstrumentName), OtlpInstrument> _instruments = new();
 
     private readonly ILogger _logger;
 
@@ -79,63 +80,45 @@ public class OtlpApplication
 
     public string UniqueApplicationName => $"{ApplicationName}-{Suffix}";
 
-    public string ShortApplicationName
-    {
-        get
-        {
-            var n = ApplicationName + Suffix.ToString(CultureInfo.InvariantCulture);
-            return n.Length <= 10 ? n : $"{ApplicationName.Left(3)}…{ApplicationName.Right(5)}{Suffix}";
-        }
-    }
-
     public void AddMetrics(AddContext context, RepeatedField<ScopeMetrics> scopeMetrics)
     {
-        _metricsLock.EnterWriteLock();
-
-        try
+        foreach (var sm in scopeMetrics)
         {
-            foreach (var sm in scopeMetrics)
+            foreach (var metric in sm.Metrics)
             {
-                OtlpMeter? meter;
-
                 try
                 {
-                    if (!_meters.TryGetValue(sm.Scope.Name, out meter))
+                    if (!_instruments.TryGetValue((metric.Name, sm.Scope.Name), out var instrument))
                     {
-                        meter = new OtlpMeter(sm.Scope);
-                        _meters.Add(sm.Scope.Name, meter);
+                        instrument = GetInstrumentSlow(metric, sm.Scope);
                     }
+
+                    instrument.AddInstrumentValuesFromGrpc(metric);
                 }
                 catch (Exception ex)
                 {
-                    context.FailureCount += sm.Metrics.Count;
-                    _logger.LogInformation(ex, "Error adding meter.");
-                    continue;
-                }
-
-                foreach (var metric in sm.Metrics)
-                {
-                    try
-                    {
-                        if (!meter.Instruments.TryGetValue(metric.Name, out var instrument))
-                        {
-                            instrument = new OtlpInstrument(metric, meter);
-                            meter.Instruments.Add(instrument.Name, instrument);
-                        }
-
-                        instrument.AddInstrumentValuesFromGrpc(metric);
-                    }
-                    catch (Exception ex)
-                    {
-                        context.FailureCount++;
-                        _logger.LogInformation(ex, "Error adding metric.");
-                    }
+                    context.FailureCount++;
+                    _logger.LogInformation(ex, "Error adding metric.");
                 }
             }
         }
-        finally
+
+        OtlpInstrument GetInstrumentSlow(Metric metric, InstrumentationScope scope)
         {
-            _metricsLock.ExitWriteLock();
+            return _instruments.GetOrAdd((metric.Name, scope.Name), key =>
+            {
+                return new OtlpInstrument(metric, GetMeter(scope));
+            });
         }
+    }
+
+    private OtlpMeter GetMeter(InstrumentationScope scope)
+    {
+        return _meters.GetOrAdd(scope.Name, static (name, scope) => new OtlpMeter(scope), scope);
+    }
+
+    public List<OtlpInstrument> GetInstruments()
+    {
+        return _instruments.Values.ToList();
     }
 }

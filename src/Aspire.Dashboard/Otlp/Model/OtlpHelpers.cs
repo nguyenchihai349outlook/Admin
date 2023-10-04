@@ -155,12 +155,6 @@ public static class OtlpHelpers
         return sb.ToString();
     }
 
-    public static string Left(this string value, int length) =>
-        value.Length <= length ? value : value[..length];
-
-    public static string Right(this string value, int length) =>
-        value.Length <= length ? value : value.Substring(value.Length - length, length);
-
     public static PagedResult<T> GetItems<T>(IEnumerable<T> results, int startIndex, int? count)
     {
         return GetItems<T, T>(results, startIndex, count, null);

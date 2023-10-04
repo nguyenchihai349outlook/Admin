@@ -27,6 +27,24 @@ fluent-toolbar[orientation=horizontal] {
     --duration-color: rgb(215, 231, 234);
 }
 
+.page-content-area {
+    /*
+        Height of the browser - static height for other content
+        TODO: Is there a better way to do this?
+    */
+    height: calc(100vh - 225px);
+    width: 100%;
+}
+
+.metrics-tree {
+    min-width: auto;
+}
+
+/* Remove the background color from unselected metrics tree items */
+fluent-tree-item.metrics-tree-item:not([selected])::part(positioning-region):not(:hover) {
+    background: unset;
+}
+
 .datagrid-overflow-area {
     /*
         Height of the browser - static height for other content

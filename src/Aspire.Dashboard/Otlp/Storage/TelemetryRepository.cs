@@ -280,7 +280,7 @@ public class TelemetryRepository
         }
     }
 
-    public GetTracesResult GetTraces(GetTracesContext context)
+    public GetTracesResponse GetTraces(GetTracesRequest context)
     {
         _tracesLock.EnterReadLock();
 
@@ -302,7 +302,7 @@ public class TelemetryRepository
             var pagedResults = OtlpHelpers.GetItems(results, context.StartIndex, context.Count, copyFunc);
             var maxDuration = pagedResults.TotalItemCount > 0 ? results.Max(r => r.Duration) : default;
 
-            return new GetTracesResult
+            return new GetTracesResponse
             {
                 PagedResult = pagedResults,
                 MaxDuration = maxDuration
@@ -569,5 +569,15 @@ public class TelemetryRepository
             Events = events
         };
         return newSpan;
+    }
+
+    public List<OtlpInstrument> GetInstruments(string applicationServiceId)
+    {
+        if (!_applications.TryGetValue(applicationServiceId, out var application))
+        {
+            return new List<OtlpInstrument>();
+        }
+
+        return application.GetInstruments();
     }
 }
