@@ -1,0 +1,45 @@
+﻿@namespace Aspire.Dashboard.Components
+@using Aspire.Dashboard.Otlp.Model
+
+<div id="@ChartDivId" style="width:800px; height:400px"></div>
+
+@code {
+    private static int LastId = 0;
+
+    private readonly int _instanceID = ++LastId;
+    private string ChartDivId => $"lineChart{_instanceID}";
+
+    private double[] _chartLabels;
+    private double[] _chartValues;
+
+    [Inject]
+    private IJSRuntime JSRuntime { get; set; }
+
+    [Parameter, EditorRequired]
+    public required OtlpInstrument Instrument { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var data = new[] {
+            new {
+                x= _chartLabels,
+                y= _chartValues,
+                type= "scatter"
+            }
+        };
+
+        var layout = new
+        {
+            title = Instrument?.Name ?? "unknown",
+            showlegend = false,
+            xaxis = new
+            {
+                title = "Time (s)"
+            }
+        };
+        var options = new { staticPlot = true };
+
+        await JSRuntime.InvokeVoidAsync("Plotly.newPlot", ChartDivId, data, layout, options);
+    }
+
+}
