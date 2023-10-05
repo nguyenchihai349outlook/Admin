@@ -36,9 +36,9 @@ public static class OtlpConfigurationExtensions
             if (environment.IsDevelopment())
             {
                 var value = "1000"; // milliseconds
-                config["OTEL_BLRP_SCHEDULE_DELAY"] = value;
-                config["OTEL_BSP_SCHEDULE_DELAY"] = value;
-                config["OTEL_METRIC_EXPORT_INTERVAL"] = value;
+                context.EnvironmentVariables["OTEL_BLRP_SCHEDULE_DELAY"] = value;
+                context.EnvironmentVariables["OTEL_BSP_SCHEDULE_DELAY"] = value;
+                context.EnvironmentVariables["OTEL_METRIC_EXPORT_INTERVAL"] = value;
             }
         }));
     }

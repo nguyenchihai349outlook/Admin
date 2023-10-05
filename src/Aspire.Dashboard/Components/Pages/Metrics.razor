@@ -57,7 +57,10 @@
                         {
                             <h3>@instrument.Name</h3>
                             <p>@instrument.Description</p>
-                            <CounterChart Instrument="@instrument" />
+                            @foreach (var dimension in instrument.Dimensions.Values)
+                            {
+                                <CounterChart Instrument="instrument" Dimension="dimension" />
+                            }
                         }
                         else
                         {
