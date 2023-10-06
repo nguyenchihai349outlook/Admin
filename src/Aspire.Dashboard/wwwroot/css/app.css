@@ -32,12 +32,17 @@ fluent-toolbar[orientation=horizontal] {
         Height of the browser - static height for other content
         TODO: Is there a better way to do this?
     */
-    height: calc(100vh - 225px);
+    height: calc(100vh - 175px);
     width: 100%;
 }
 
 .metrics-tree {
     min-width: auto;
+    margin-right: 3px;
+}
+
+.metrics-content {
+    margin-left: 10px;
 }
 
 /* Remove the background color from unselected metrics tree items */

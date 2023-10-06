@@ -45,40 +45,42 @@
                         </FluentTreeView>
                     </Panel1>
                     <Panel2>
-                        @if (_selectedTreeItem?.Data is OtlpMeter meter)
-                        {
-                            <h3>@meter.MeterName</h3>
-                            @foreach (var item in _instruments.Where(i => i.Parent == meter))
+                        <div class="metrics-content">
+                            @if (_selectedTreeItem?.Data is OtlpMeter meter)
                             {
-                                <p>@item.Name: @item.Description</p>
+                                <h3>@meter.MeterName</h3>
+                                @foreach (var item in _instruments.Where(i => i.Parent == meter))
+                                {
+                                    <p>@item.Name: @item.Description</p>
+                                }
                             }
-                        }
-                        else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
-                        {
-                            <h3>@instrument.Name</h3>
-                            <p>@instrument.Description</p>
-                            @foreach (var dimension in instrument.Dimensions.Values)
+                            else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
                             {
-                                <CounterChart Instrument="instrument" Dimension="dimension" />
+                                <h3>@instrument.Name</h3>
+                                <p>@instrument.Description</p>
+                                @foreach (var dimension in instrument.Dimensions.Values)
+                                {
+                                    <CounterChart Instrument="instrument" Dimension="dimension" />
+                                }
                             }
-                        }
-                        else
-                        {
-                            <p>Select instrument.</p>
-                        }
+                            else
+                            {
+                                <p>Select instrument.</p>
+                            }
+                        </div>
                     </Panel2>
                 </FluentSplitter>
             }
             else if (_instruments == null)
             {
                 <div class="empty-content">
-                    <FluentIcon Icon="Icons.Regular.Size24.ChartMultiple" />&nbsp;Select an application to view metrics
+                    <FluentIcon Icon="Icons.Regular.Size24.ChartMultiple" />&nbsp;Select a service to view metrics
                 </div>
             }
             else
             {
                 <div class="empty-content">
-                    <FluentIcon Icon="Icons.Regular.Size24.ChartMultiple" />&nbsp;No metrics for the selected application
+                    <FluentIcon Icon="Icons.Regular.Size24.ChartMultiple" />&nbsp;No metrics for the selected service
                 </div>
             }
         </div>
@@ -86,7 +88,7 @@
 </div>
 
 @code {
-    private static readonly ApplicationViewModel SelectApplication = new ApplicationViewModel { Id = null, Name = "Select application..." };
+    private static readonly ApplicationViewModel SelectApplication = new ApplicationViewModel { Id = null, Name = "Select service..." };
 
     private List<ApplicationViewModel> _applications = default!;
     private ApplicationViewModel _selectedApplication = SelectApplication;
@@ -124,7 +126,7 @@
 
     protected override void OnParametersSet()
     {
-        _selectedApplication = _applications.SingleOrDefault(e => e.Id == ApplicationInstanceId) ?? SelectApplication;
+        _selectedApplication = _applications.SingleOrDefault(e => e.Id == ApplicationInstanceId) ?? _applications.ElementAtOrDefault(1) ?? SelectApplication;
         ViewModel.ApplicationServiceId = _selectedApplication.Id;
         _instruments = !string.IsNullOrEmpty(_selectedApplication.Id) ? TelemetryRepository.GetInstruments(_selectedApplication.Id) : null;
         UpdateSubscription();

@@ -86,11 +86,13 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var data = new[] {
-            new {
-                x= _chartLabels,
-                y= _chartValues,
-                type= "scatter"
+        var data = new[]
+        {
+            new
+            {
+                x = _chartLabels,
+                y = _chartValues,
+                type = "scatter"
             }
         };
 
