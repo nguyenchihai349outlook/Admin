@@ -86,6 +86,11 @@ public class OtlpApplication
         {
             foreach (var metric in sm.Metrics)
             {
+                if (ApplicationName != "myfrontend" || metric.Name != "kestrel.active_connections")
+                {
+                    continue;
+                }
+
                 try
                 {
                     if (!_instruments.TryGetValue((metric.Name, sm.Scope.Name), out var instrument))

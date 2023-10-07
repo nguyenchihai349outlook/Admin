@@ -86,3 +86,67 @@ if (matched) {
 } else {
     window.DefaultBaseLayerLuminance = 1.0;
 }
+
+function rand() {
+    return Math.random();
+}
+
+window.initializeGraph = function (id) {
+    var time = new Date();
+
+    var data = [{
+        x: [time],
+        y: [rand],
+        mode: 'lines',
+        line: { color: '#80CAF6' }
+    }];
+
+    var olderTime = time.setMinutes(time.getMinutes() - 1);
+    var futureTime = time.setMinutes(time.getMinutes() + 1);
+
+    var layout = {
+        margin: { t: 0, r: 0, b: 90, l: 90 },
+        xaxis: {
+            type: 'date',
+            range: [olderTime, futureTime],
+            title: {
+                text: "Time",
+                standoff: 30
+            },
+            tickformat: '%H:%M:%S'
+        },
+        yaxis: {
+            title: {
+                text: "connections",
+                standoff: 20
+            },
+            rangemode: "tozero"
+        }
+    };
+
+    var options = { staticPlot: true };
+
+    Plotly.newPlot(id, data, layout, options);
+
+    var cnt = 0;
+
+    var interval = setInterval(function () {
+
+        var time = new Date();
+
+        var update = {
+            x: [[time]],
+            y: [[rand()]]
+        }
+
+        var olderTime = time.setMinutes(time.getMinutes() - 1);
+        var futureTime = time.setMinutes(time.getMinutes() + 1);
+
+        layout.xaxis.range = [olderTime, futureTime];
+
+        Plotly.relayout(id, layout);
+        Plotly.extendTraces(id, update, [0])
+
+        if (++cnt === 100) clearInterval(interval);
+    }, 1000);
+};

@@ -1,6 +1,6 @@
 ﻿@page "/Metrics/{applicationInstanceId?}"
-@page "/Metrics/{applicationInstanceId}/Meter/{meterName}"
-@page "/Metrics/{applicationInstanceId}/Meter/{meterName}/Instrument/{instrumentName}"
+@page "/Metrics1/{applicationInstanceId}/Meter/{meterName}"
+@page "/Metrics1/{applicationInstanceId}/Meter/{meterName}/Instrument/{instrumentName}"
 
 @using Aspire.Dashboard.Components.Dialogs
 @using Aspire.Dashboard.Model
@@ -24,20 +24,26 @@
                           OptionText="@(c => c.Name)"
                           @bind-SelectedOption="_selectedApplication"
                           @bind-SelectedOption:after="HandleSelectedApplicationChangedAsync" />
+            <FluentIcon slot="end" Icon="Icons.Regular.Size20.Clock" Style="margin-right:5px;" />
+            <FluentSelect slot="end" TOption="MetricsDurationViewModel"
+                          Items="@s_durations"
+                          OptionText="@(c => c.Text)"
+                          @bind-SelectedOption="_selectedDuration"
+                          @bind-SelectedOption:after="HandleSelectedDurationChangedAsync" />
         </FluentToolbar>
         <div class="page-content-area">
             @if (_instruments?.Count > 0)
             {
                 <FluentSplitter Style="height:100%" Panel1Size="450px">
                     <Panel1>
-                        <FluentTreeView  Class="metrics-tree" @bind-CurrentSelected="_selectedTreeItem" @bind-CurrentSelected:after="HandleSelectedTreeItemChanged">
+                        <FluentTreeView Class="metrics-tree" @bind-CurrentSelected="_selectedTreeItem" @bind-CurrentSelected:after="HandleSelectedTreeItemChanged">
                             <ChildContent>
                                 @foreach (var meterGroup in _instruments.GroupBy(i => i.Parent).OrderBy(g => g.Key.MeterName))
                                 {
-                                    <FluentTreeItem Class="metrics-tree-item" Text="@meterGroup.Key.MeterName" Data="@meterGroup.Key" title="@meterGroup.Key.MeterName">
+                                    <FluentTreeItem Class="metrics-tree-item" Text="@meterGroup.Key.MeterName" Data="@meterGroup.Key" title="@meterGroup.Key.MeterName" InitiallyExpanded="@(meterGroup.Key == _selectedMeter)" InitiallySelected="@(_selectedInstrument == null && meterGroup.Key == _selectedMeter)">
                                         @foreach (var instrument in meterGroup.OrderBy(i => i.Name))
                                         {
-                                            <FluentTreeItem Class="metrics-tree-item" Text="@instrument.Name" Data="@instrument" title="@instrument.Name" />
+                                            <FluentTreeItem Class="metrics-tree-item" Text="@instrument.Name" Data="@instrument" title="@instrument.Name" InitiallySelected="@(instrument == _selectedInstrument)" />
                                         }
                                     </FluentTreeItem>
                                 }
@@ -46,21 +52,41 @@
                     </Panel1>
                     <Panel2>
                         <div class="metrics-content">
-                            @if (_selectedTreeItem?.Data is OtlpMeter meter)
+                            @if (_selectedInstrument != null)
                             {
-                                <h3>@meter.MeterName</h3>
-                                @foreach (var item in _instruments.Where(i => i.Parent == meter))
+                                <h3>@_selectedInstrument.Name</h3>
+                                <p>@_selectedInstrument.Description</p>
+                                @foreach (var dimension in _selectedInstrument.Dimensions.Values)
                                 {
-                                    <p>@item.Name: @item.Description</p>
+                                    <CounterChart Instrument="_selectedInstrument" Dimension="dimension" />
+
+                                    <p><b>Dimension name:</b> @dimension.Name</p>
+                                    <p><b>Dimension values count:</b> @dimension.Values.Count()</p>
+                                    <table>
+                                        <tr>
+                                            <th>Start</th>
+                                            <th>End</th>
+                                            <th>Count</th>
+                                            <th>Value</th>
+                                        </tr>
+                                    @foreach (var item in dimension.Values)
+                                    {
+                                        <tr>
+                                            <td>@item.Start</td>
+                                            <td>@item.End</td>
+                                            <td>@item.Count</td>
+                                            <td>@item.ToString()</td>
+                                        </tr>
+                                    }
+                                    </table>
                                 }
                             }
-                            else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
+                            else if (_selectedMeter != null)
                             {
-                                <h3>@instrument.Name</h3>
-                                <p>@instrument.Description</p>
-                                @foreach (var dimension in instrument.Dimensions.Values)
+                                <h3>@_selectedMeter.MeterName</h3>
+                                @foreach (var item in _instruments.Where(i => i.Parent == _selectedMeter))
                                 {
-                                    <CounterChart Instrument="instrument" Dimension="dimension" />
+                                    <p>@item.Name: @item.Description</p>
                                 }
                             }
                             else
@@ -92,10 +118,24 @@
 
     private List<ApplicationViewModel> _applications = default!;
     private ApplicationViewModel _selectedApplication = SelectApplication;
+    private static readonly List<MetricsDurationViewModel> s_durations = new List<MetricsDurationViewModel>
+    {
+        new MetricsDurationViewModel { Text = "Last 5 minutes", Duration = TimeSpan.FromMinutes(5) },
+        new MetricsDurationViewModel { Text = "Last 15 minutes", Duration = TimeSpan.FromMinutes(15) },
+        new MetricsDurationViewModel { Text = "Last 30 minutes", Duration = TimeSpan.FromMinutes(30) },
+        new MetricsDurationViewModel { Text = "Last 1 hour", Duration = TimeSpan.FromHours(1) },
+        new MetricsDurationViewModel { Text = "Last 3 hours", Duration = TimeSpan.FromHours(3) },
+        new MetricsDurationViewModel { Text = "Last 6 hours", Duration = TimeSpan.FromHours(6) },
+        new MetricsDurationViewModel { Text = "Last 12 hours", Duration = TimeSpan.FromHours(12) },
+        new MetricsDurationViewModel { Text = "Last 24 hours", Duration = TimeSpan.FromHours(24) },
+    };
+    private MetricsDurationViewModel _selectedDuration = s_durations[0];
     private Subscription? _applicationsSubscription;
     private Subscription? _metricsSubscription;
     private List<OtlpInstrument>? _instruments;
     private FluentTreeItem? _selectedTreeItem;
+    private OtlpMeter? _selectedMeter;
+    private OtlpInstrument? _selectedInstrument;
 
     [Parameter]
     public string? ApplicationInstanceId { get; set; }
@@ -129,6 +169,18 @@
         _selectedApplication = _applications.SingleOrDefault(e => e.Id == ApplicationInstanceId) ?? _applications.ElementAtOrDefault(1) ?? SelectApplication;
         ViewModel.ApplicationServiceId = _selectedApplication.Id;
         _instruments = !string.IsNullOrEmpty(_selectedApplication.Id) ? TelemetryRepository.GetInstruments(_selectedApplication.Id) : null;
+
+        _selectedMeter = null;
+        _selectedInstrument = null;
+        if (_instruments != null && !string.IsNullOrEmpty(MeterName))
+        {
+            _selectedMeter = _instruments.FirstOrDefault(i => i.Parent.MeterName == MeterName)?.Parent;
+            if (_selectedMeter != null && !string.IsNullOrEmpty(InstrumentName))
+            {
+                _selectedInstrument = _instruments.FirstOrDefault(i => i.Name == InstrumentName);
+            }
+        }
+
         UpdateSubscription();
     }
 
@@ -145,15 +197,20 @@
         return Task.CompletedTask;
     }
 
+    private Task HandleSelectedDurationChangedAsync()
+    {
+        return Task.CompletedTask;
+    }
+
     private void HandleSelectedTreeItemChanged()
     {
         if (_selectedTreeItem?.Data is OtlpMeter meter)
         {
-            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{meter.MeterName}");
+            NavigationManager.NavigateTo($"/Metrics1/{_selectedApplication.Id}/Meter/{meter.MeterName}");
         }
         else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
         {
-            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{instrument.Parent.MeterName}/Instrument/{instrument.Name}");
+            NavigationManager.NavigateTo($"/Metrics1/{_selectedApplication.Id}/Meter/{instrument.Parent.MeterName}/Instrument/{instrument.Name}");
         }
     }
 

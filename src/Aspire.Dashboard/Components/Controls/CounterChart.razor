@@ -86,13 +86,20 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("initializeGraph", ChartDivId);
+        }
+
+        /*
         var data = new[]
         {
             new
             {
                 x = _chartLabels,
                 y = _chartValues,
-                type = "scatter"
+                mode = "lines",
+                line = new { color = "#80CAF6" }
             }
         };
 
@@ -102,12 +109,13 @@
             showlegend = false,
             xaxis = new
             {
-                title = "Time (s)"
+                title = "Time"
             }
         };
         var options = new { staticPlot = true };
 
         await JSRuntime.InvokeVoidAsync("Plotly.newPlot", ChartDivId, data, layout, options);
+        */
     }
 
 }

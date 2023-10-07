@@ -7,6 +7,14 @@ fluent-toolbar[orientation=horizontal] {
     width: 100%;
 }
 
+/* Metrics chart SVG */
+.yaxislayer-above {
+    transform: translate(-10px,0px);
+}
+.xaxislayer-above {
+    transform: translate(0px,10px);
+}
+
 /* Hide any web components that haven't been */
 :not(:defined),
 .before-upgrade {
