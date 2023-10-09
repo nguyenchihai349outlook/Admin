@@ -54,12 +54,11 @@
                         <div class="metrics-content">
                             @if (_selectedInstrument != null)
                             {
-                                <h3>@_selectedInstrument.Name</h3>
-                                <p>@_selectedInstrument.Description</p>
+                                <CounterChart Instrument="_selectedInstrument" Dimensions="_selectedInstrument.Dimensions.Values.ToArray()" Duration="_selectedDuration.Duration" />
+
+                                @*
                                 @foreach (var dimension in _selectedInstrument.Dimensions.Values)
                                 {
-                                    <CounterChart Instrument="_selectedInstrument" Dimension="dimension" />
-
                                     <p><b>Dimension name:</b> @dimension.Name</p>
                                     <p><b>Dimension values count:</b> @dimension.Values.Count()</p>
                                     <table>
@@ -80,6 +79,7 @@
                                     }
                                     </table>
                                 }
+ *@
                             }
                             else if (_selectedMeter != null)
                             {
@@ -120,6 +120,7 @@
     private ApplicationViewModel _selectedApplication = SelectApplication;
     private static readonly List<MetricsDurationViewModel> s_durations = new List<MetricsDurationViewModel>
     {
+        new MetricsDurationViewModel { Text = "Last 1 minute", Duration = TimeSpan.FromMinutes(1) },
         new MetricsDurationViewModel { Text = "Last 5 minutes", Duration = TimeSpan.FromMinutes(5) },
         new MetricsDurationViewModel { Text = "Last 15 minutes", Duration = TimeSpan.FromMinutes(15) },
         new MetricsDurationViewModel { Text = "Last 30 minutes", Duration = TimeSpan.FromMinutes(30) },

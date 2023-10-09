@@ -1,31 +1,31 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics;
 using Google.Protobuf.Collections;
 using OpenTelemetry.Proto.Common.V1;
 using OpenTelemetry.Proto.Metrics.V1;
 
 namespace Aspire.Dashboard.Otlp.Model.MetricValues;
 
+[DebuggerDisplay("Name = {Name}, Values = {Values.Count}")]
 public class DimensionScope
 {
     public string Name { get; init; }
     public int Key { get; init; }
 
-    public readonly KeyValuePair<string, string>[] _dimensions;
-    public readonly List<MetricValueBase> _values = new();
+    public KeyValuePair<string, string>[] Attributes { get; }
+    public readonly List<MetricValueBase> Values = new();
 
     // Used to aid in merging values that are the same in a concurrent environment
     private MetricValueBase? _lastValue;
 
-    public IEnumerable<MetricValueBase> Values => _values;
-
-    public bool IsHistogram => _values.Count > 0 && _values[0] is HistogramValue;
+    public bool IsHistogram => Values.Count > 0 && Values[0] is HistogramValue;
 
     public DimensionScope(int key, RepeatedField<KeyValue> keyvalues)
     {
-        _dimensions = keyvalues.ToKeyValuePairs();
-        var name = _dimensions.ConcatProperties();
+        Attributes = keyvalues.ToKeyValuePairs();
+        var name = Attributes.ConcatProperties();
         Name = name != null && name.Length > 0 ? name : "no-dimensions";
         Key = key;
     }
@@ -57,7 +57,7 @@ public class DimensionScope
                         start = lastLongValue.End;
                     }
                     _lastValue = new MetricValue<long>(d.AsInt, start, end);
-                    _values.Add(_lastValue);
+                    Values.Add(_lastValue);
                 }
             }
         }
@@ -78,7 +78,7 @@ public class DimensionScope
                         start = lastDoubleValue.End;
                     }
                     _lastValue = new MetricValue<double>(d.AsDouble, start, end);
-                    _values.Add(_lastValue);
+                    Values.Add(_lastValue);
                 }
             }
         }
@@ -102,7 +102,7 @@ public class DimensionScope
                     start = lastHistogramValue.End;
                 }
                 _lastValue = new HistogramValue(h.BucketCounts, h.Sum, h.Count, start, end, h.ExplicitBounds.ToArray());
-                _values.Add(_lastValue);
+                Values.Add(_lastValue);
             }
         }
     }
