@@ -115,8 +115,10 @@ window.initializeChart = function (id, unit, yValues, xValues, rangeStartTime, r
     var data = [{
         x: xValues,
         y: yValues,
-        mode: 'lines',
-        line: { color: '#80CAF6' }
+        //mode: 'lines',
+        line: { color: '#66A1C4' },
+        fill: 'tozeroy',
+        type: 'scatter'
     }];
 
     var layout = {

@@ -60,7 +60,7 @@ public class OtlpInstrument
         // We want to find the dimension scope that matches the attributes, but we don't want to allocate.
         // Copy values to a temporary reusable array.
         OtlpHelpers.CopyKeyValuePairs(attributes, ref tempAttributes);
-        Array.Sort(tempAttributes, KeyValuePairComparer.Instance);
+        Array.Sort(tempAttributes, 0, attributes.Count, KeyValuePairComparer.Instance);
 
         var comparableAttributes = tempAttributes.AsMemory(0, attributes.Count);
 

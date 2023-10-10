@@ -92,7 +92,7 @@ public class OtlpApplication
                 // kestrel.active_connections
                 // http.server.request.duration
 
-                if (ApplicationName != "myfrontend" || metric.Name != "kestrel.active_connections")
+                if (ApplicationName != "myfrontend" || metric.Name != "http.server.request.duration")
                 {
                     continue;
                 }

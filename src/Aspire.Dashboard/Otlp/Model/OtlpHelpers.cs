@@ -126,7 +126,7 @@ public static class OtlpHelpers
 
     public static void CopyKeyValuePairs(RepeatedField<KeyValue> attributes, [NotNull] ref KeyValuePair<string, string>[]? copiedAttributes)
     {
-        if (copiedAttributes is null || attributes.Count < copiedAttributes.Length)
+        if (copiedAttributes is null || copiedAttributes.Length < attributes.Count)
         {
             copiedAttributes = new KeyValuePair<string, string>[attributes.Count];
         }

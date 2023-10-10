@@ -156,7 +156,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
                     {
                         MetricValue<long> longMetric => longMetric.Value,
                         MetricValue<double> doubleMetric => doubleMetric.Value,
-                        _ => throw new InvalidOperationException("Unexpected metric type: " + metric.GetType())
+                        _ => 0// throw new InvalidOperationException("Unexpected metric type: " + metric.GetType())
                     };
 
                     pointValue += value;
