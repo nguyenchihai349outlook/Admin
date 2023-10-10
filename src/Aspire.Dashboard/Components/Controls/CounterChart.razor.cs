@@ -29,7 +29,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
     private Task? _tickTask;
     private TimeSpan _tickDuration;
     private DateTime _lastUpdateTime;
-    private DateTime _currentDataTime;
+    private DateTime _currentDataStartTime;
 
     [Inject]
     public required IJSRuntime JSRuntime { get; set; }
@@ -50,7 +50,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
 
     protected override void OnInitialized()
     {
-        _currentDataTime = GetCurrentDataTime();
+        _currentDataStartTime = GetCurrentDataTime();
 
         foreach (var dimensions in Dimensions)
         {
@@ -100,15 +100,17 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         await InvokeAsync(StateHasChanged).ConfigureAwait(false);
     }
 
-    private (List<double?> Y, List<DateTime> X, TimeSpan PointDuration) CalculateChartValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime)
+    private (List<double?> Y, List<DateTime> X) CalculateChartValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime)
     {
         var pointDuration = Duration / pointCount;
         var yValues = new List<double?>();
         var xValues = new List<DateTime>();
-        var startDate = _currentDataTime;
+        var startDate = _currentDataStartTime;
         DateTime? firstPointEndTime = null;
 
-        for (var pointIndex = 0; pointIndex < pointCount; pointIndex++)
+        // Generate the points in reverse order so that the chart is drawn from right to left.
+        // Add a couple of extra points to the end so that the chart is drawn all the way to the right edge.
+        for (var pointIndex = 0; pointIndex < (pointCount + 2); pointIndex++)
         {
             var start = CalcOffset(pointIndex, startDate, pointDuration);
             var end = CalcOffset(pointIndex - 1, startDate, pointDuration);
@@ -134,13 +136,8 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
             yValues.Add(inProgressPointValue);
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
-        else
-        {
-            yValues.Add(yValues.Last());
-            xValues.Add(xValues.Last());
-        }
 
-        return (yValues, xValues, pointDuration);
+        return (yValues, xValues);
     }
 
     private static bool TryCalculateValue(List<DimensionScope> dimensions, DateTime start, DateTime end, out double pointValue)
@@ -238,9 +235,9 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
     {
         var inProgressDataTime = GetCurrentDataTime();
 
-        while (_currentDataTime.Add(_tickDuration) < inProgressDataTime)
+        while (_currentDataStartTime.Add(_tickDuration) < inProgressDataTime)
         {
-            _currentDataTime = _currentDataTime.Add(_tickDuration);
+            _currentDataStartTime = _currentDataStartTime.Add(_tickDuration);
         }
 
         if (_dimensionsOrDurationChanged)
@@ -251,6 +248,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         }
         else if (_lastUpdateTime.Add(TimeSpan.FromSeconds(0.2)) < DateTime.UtcNow)
         {
+            // Throttle how often the chart is updated.
             _lastUpdateTime = DateTime.UtcNow;
             await UpdateChart(tickUpdate: true, inProgressDataTime).ConfigureAwait(false);
         }
@@ -259,15 +257,27 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
     private async Task UpdateChart(bool tickUpdate, DateTime inProgressDataTime)
     {
         var matchedDimensions = Dimensions.Where(MatchDimension).ToList();
-        var (yValues, xValues, pointDuration) = CalculateChartValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime);
+        var (yValues, xValues) = CalculateChartValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime);
 
-        var yLabel = Instrument.Unit.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
-        await JSRuntime.InvokeVoidAsync("initializeGraph",
-            ChartDivId,
-            yLabel,
-            yValues,
-            xValues,
-            inProgressDataTime.ToLocalTime(),
-            (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);
+        if (!tickUpdate)
+        {
+            var yLabel = Instrument.Unit.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
+            await JSRuntime.InvokeVoidAsync("initializeChart",
+                ChartDivId,
+                yLabel,
+                yValues,
+                xValues,
+                inProgressDataTime.ToLocalTime(),
+                (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("updateChart",
+                ChartDivId,
+                yValues,
+                xValues,
+                inProgressDataTime.ToLocalTime(),
+                (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);
+        }
     }
 }

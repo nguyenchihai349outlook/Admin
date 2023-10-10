@@ -86,10 +86,10 @@ public class OtlpApplication
         {
             foreach (var metric in sm.Metrics)
             {
-                if (ApplicationName != "myfrontend" || metric.Name != "kestrel.active_connections")
-                {
-                    continue;
-                }
+                //if (ApplicationName != "myfrontend" || metric.Name != "kestrel.active_connections")
+                //{
+                //    continue;
+                //}
 
                 try
                 {

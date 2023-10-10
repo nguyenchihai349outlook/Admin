@@ -1,6 +1,6 @@
 ﻿@page "/Metrics/{applicationInstanceId?}"
-@page "/Metrics1/{applicationInstanceId}/Meter/{meterName}"
-@page "/Metrics1/{applicationInstanceId}/Meter/{meterName}/Instrument/{instrumentName}"
+@page "/Metrics/{applicationInstanceId}/Meter/{meterName}"
+@page "/Metrics/{applicationInstanceId}/Meter/{meterName}/Instrument/{instrumentName}"
 
 @using Aspire.Dashboard.Components.Dialogs
 @using Aspire.Dashboard.Model
@@ -207,11 +207,11 @@
     {
         if (_selectedTreeItem?.Data is OtlpMeter meter)
         {
-            NavigationManager.NavigateTo($"/Metrics1/{_selectedApplication.Id}/Meter/{meter.MeterName}");
+            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{meter.MeterName}");
         }
         else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
         {
-            NavigationManager.NavigateTo($"/Metrics1/{_selectedApplication.Id}/Meter/{instrument.Parent.MeterName}/Instrument/{instrument.Name}");
+            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{instrument.Parent.MeterName}/Instrument/{instrument.Name}");
         }
     }
 

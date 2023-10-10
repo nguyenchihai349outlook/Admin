@@ -87,32 +87,44 @@ if (matched) {
     window.DefaultBaseLayerLuminance = 1.0;
 }
 
-function rand() {
-    return Math.random();
-}
+window.updateChart = function (id, yValues, xValues, rangeStartTime, rangeEndTime) {
+    console.log(`updateChart rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
 
-function addMinutes(date, minutes) {
-    return new Date(date.getTime() + minutes * 60000);
-}
+    var chartDiv = document.getElementById(id);
 
-window.initializeGraph = function (id, unit, yValues, xValues, rangeStartTime, rangeEndTime) {
-    console.log(`initializeGraph rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
+    var data = {
+        x: [xValues],
+        y: [yValues]
+    };
+
+    var layout = {
+        xaxis: {
+            range: [rangeEndTime, rangeStartTime],
+            fixedrange: true
+        }
+    };
+
+    Plotly.update(chartDiv, data, layout);
+};
+
+window.initializeChart = function (id, unit, yValues, xValues, rangeStartTime, rangeEndTime) {
+    console.log(`initializeChart rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
+
+    var chartDiv = document.getElementById(id);
 
     var data = [{
-        x: xValues, //[time.toISOString()],
-        y: yValues, //[rand],
+        x: xValues,
+        y: yValues,
         mode: 'lines',
         line: { color: '#80CAF6' }
     }];
-
-    var olderTime = xValues[0] //addMinutes(time, -1);
-    var futureTime = xValues[xValues.length - 1];// addMinutes(time, 1 / 60);
 
     var layout = {
         margin: { t: 0, r: 0, b: 70, l: 70 },
         xaxis: {
             type: 'date',
             range: [rangeEndTime, rangeStartTime],
+            fixedrange: true,
             title: {
                 text: "Time",
                 standoff: 30
@@ -124,33 +136,13 @@ window.initializeGraph = function (id, unit, yValues, xValues, rangeStartTime, r
                 text: unit,
                 standoff: 20
             },
-            rangemode: "tozero"
-        }
+            rangemode: "tozero",
+            fixedrange: true
+        },
+        dragMode: true
     };
 
-    var options = { staticPlot: true };
+    var options = { scrollZoom: false, displayModeBar: false };
 
-    Plotly.newPlot(id, data, layout, options);
-
-    //var cnt = 0;
-
-    //var interval = setInterval(function () {
-
-    //    var time = new Date();
-
-    //    var update = {
-    //        x: [[time.toISOString()]],
-    //        y: [[rand()]]
-    //    }
-
-    //    var olderTime = addMinutes(time, -1);
-    //    var futureTime = addMinutes(time, 1 / 60);
-
-    //    layout.xaxis.range = [olderTime.toISOString(), futureTime.toISOString()];
-
-    //    Plotly.relayout(id, layout);
-    //    Plotly.extendTraces(id, update, [0])
-
-    //    if (++cnt === 100) clearInterval(interval);
-    //}, 1000);
+    Plotly.newPlot(chartDiv, data, layout, options);
 };
