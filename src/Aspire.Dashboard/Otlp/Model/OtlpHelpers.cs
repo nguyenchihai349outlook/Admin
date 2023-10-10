@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -118,12 +119,32 @@ public static class OtlpHelpers
         }
 
         var values = new KeyValuePair<string, string>[attributes.Count];
+        CopyKeyValues(attributes, values);
+
+        return values;
+    }
+
+    public static void CopyKeyValuePairs(RepeatedField<KeyValue> attributes, [NotNull] ref KeyValuePair<string, string>[]? copiedAttributes)
+    {
+        if (copiedAttributes is null || attributes.Count < copiedAttributes.Length)
+        {
+            copiedAttributes = new KeyValuePair<string, string>[attributes.Count];
+        }
+        else
+        {
+            Array.Clear(copiedAttributes);
+        }
+
+        CopyKeyValues(attributes, copiedAttributes);
+    }
+
+    private static void CopyKeyValues(RepeatedField<KeyValue> attributes, KeyValuePair<string, string>[] copiedAttributes)
+    {
         for (var i = 0; i < attributes.Count; i++)
         {
             var keyValue = attributes[i];
-            values[i] = new KeyValuePair<string, string>(keyValue.Key, keyValue.Value.GetString());
+            copiedAttributes[i] = new KeyValuePair<string, string>(keyValue.Key, keyValue.Value.GetString());
         }
-        return values;
     }
 
     public static string? GetValue(this KeyValuePair<string, string>[] values, string name)

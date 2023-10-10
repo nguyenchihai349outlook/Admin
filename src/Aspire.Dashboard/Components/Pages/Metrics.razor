@@ -56,7 +56,6 @@
                             {
                                 <CounterChart Instrument="_selectedInstrument" Dimensions="_selectedInstrument.Dimensions.Values.ToArray()" Duration="_selectedDuration.Duration" />
 
-                                @*
                                 @foreach (var dimension in _selectedInstrument.Dimensions.Values)
                                 {
                                     <p><b>Dimension name:</b> @dimension.Name</p>
@@ -71,15 +70,14 @@
                                     @foreach (var item in dimension.Values)
                                     {
                                         <tr>
-                                            <td>@item.Start</td>
-                                            <td>@item.End</td>
+                                            <td>@item.Start.ToLocalTime()</td>
+                                            <td>@item.End.ToLocalTime()</td>
                                             <td>@item.Count</td>
                                             <td>@item.ToString()</td>
                                         </tr>
                                     }
                                     </table>
                                 }
- *@
                             }
                             else if (_selectedMeter != null)
                             {

@@ -82,14 +82,20 @@ public class OtlpApplication
 
     public void AddMetrics(AddContext context, RepeatedField<ScopeMetrics> scopeMetrics)
     {
+        // Temporary attributes array to use when adding metrics to the instruments.
+        KeyValuePair<string, string>[]? tempAttributes = null;
+
         foreach (var sm in scopeMetrics)
         {
             foreach (var metric in sm.Metrics)
             {
-                //if (ApplicationName != "myfrontend" || metric.Name != "kestrel.active_connections")
-                //{
-                //    continue;
-                //}
+                // kestrel.active_connections
+                // http.server.request.duration
+
+                if (ApplicationName != "myfrontend" || metric.Name != "kestrel.active_connections")
+                {
+                    continue;
+                }
 
                 try
                 {
@@ -98,7 +104,10 @@ public class OtlpApplication
                         instrument = GetInstrumentSlow(metric, sm.Scope);
                     }
 
-                    instrument.AddInstrumentValuesFromGrpc(metric);
+                    lock (instrument)
+                    {
+                        instrument.AddInstrumentValuesFromGrpc(metric, ref tempAttributes);
+                    }
                 }
                 catch (Exception ex)
                 {
