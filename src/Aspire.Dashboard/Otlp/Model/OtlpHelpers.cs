@@ -77,7 +77,7 @@ public static class OtlpHelpers
             AnyValue.ValueOneofCase.StringValue => value.StringValue,
             AnyValue.ValueOneofCase.IntValue => value.IntValue.ToString(CultureInfo.InvariantCulture),
             AnyValue.ValueOneofCase.DoubleValue => value.DoubleValue.ToString(CultureInfo.InvariantCulture),
-            AnyValue.ValueOneofCase.BoolValue => value.BoolValue.ToString(),
+            AnyValue.ValueOneofCase.BoolValue => value.BoolValue ? "true" : "false",
             AnyValue.ValueOneofCase.BytesValue => value.BytesValue.ToHexString(),
             _ => value.ToString(),
         };

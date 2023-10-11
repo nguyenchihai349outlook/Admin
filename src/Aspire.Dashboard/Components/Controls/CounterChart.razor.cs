@@ -52,35 +52,27 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
     {
         _currentDataStartTime = GetCurrentDataTime();
 
-        foreach (var dimensions in Dimensions)
+        foreach (var item in Instrument.KnownAttributeValues.OrderBy(kvp => kvp.Key))
         {
-            foreach (var attribute in dimensions.Attributes)
+            var dimensionModel = new DimensionFilterViewModel
             {
-                var dimensionModel = _viewModel.DimensionFilters.SingleOrDefault(d => d.Name == attribute.Key);
-                if (dimensionModel is null)
+                Name = item.Key
+            };
+            dimensionModel.Values.Add(new DimensionValueViewModel
+            {
+                Name = "(All)",
+                All = true
+            });
+            dimensionModel.Values.AddRange(item.Value.OrderBy(v => v).Select(v =>
+            {
+                var empty = string.IsNullOrEmpty(v);
+                return new DimensionValueViewModel
                 {
-                    dimensionModel = new DimensionFilterViewModel()
-                    {
-                        Name = attribute.Key
-                    };
-                    dimensionModel.Values.Add(new DimensionValueViewModel
-                    {
-                        Name = "All",
-                        All = true
-                    });
-                    _viewModel.DimensionFilters.Add(dimensionModel);
-                }
-                var valueModel = dimensionModel.Values.SingleOrDefault(v => v.Name == attribute.Value);
-                if (valueModel is null)
-                {
-                    valueModel = new DimensionValueViewModel()
-                    {
-                        Name = attribute.Value,
-                        All = false
-                    };
-                    dimensionModel.Values.Add(valueModel);
-                }
-            }
+                    Name = empty ? "(Empty)" : v,
+                    Empty = empty,
+                };
+            }));
+            _viewModel.DimensionFilters.Add(dimensionModel);
         }
 
         foreach (var item in _viewModel.DimensionFilters)
@@ -100,7 +92,171 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         await InvokeAsync(StateHasChanged).ConfigureAwait(false);
     }
 
-    private (List<double?> Y, List<DateTime> X) CalculateChartValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime)
+    private sealed class Trace
+    {
+        public Trace(string name, double?[] values)
+        {
+            Name = name;
+            Values = values;
+        }
+
+        public string Name { get; }
+        public double?[] Values { get; }
+    }
+
+    private (List<Trace> Y, List<DateTime> X) CalculateHistogramValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime)
+    {
+        var pointDuration = Duration / pointCount;
+        var yValues = new Dictionary<int, List<double?>>
+        {
+            [50] = new(),
+            [90] = new(),
+            [99] = new(),
+        };
+        var xValues = new List<DateTime>();
+        var startDate = _currentDataStartTime;
+        DateTime? firstPointEndTime = null;
+
+        // Generate the points in reverse order so that the chart is drawn from right to left.
+        // Add a couple of extra points to the end so that the chart is drawn all the way to the right edge.
+        for (var pointIndex = 0; pointIndex < (pointCount + 2); pointIndex++)
+        {
+            var start = CalcOffset(pointIndex, startDate, pointDuration);
+            var end = CalcOffset(pointIndex - 1, startDate, pointDuration);
+            firstPointEndTime ??= end;
+
+            xValues.Add(end.ToLocalTime());
+
+            TryCalculateHistogramPoints(dimensions, start, end, yValues);
+
+            //if ()
+            //{
+            //    yValues.Add(tickPointValue);
+            //}
+            //else
+            //{
+            //    yValues.Add(null);
+            //}
+        }
+
+        foreach (var item in yValues)
+        {
+            item.Value.Reverse();
+        }
+        xValues.Reverse();
+
+        if (tickUpdate && TryCalculateHistogramPoints(dimensions, firstPointEndTime!.Value, inProgressDataTime, yValues))
+        {
+            //yValues.Add(inProgressPointValue);
+            xValues.Add(inProgressDataTime.ToLocalTime());
+        }
+
+        return (yValues.Select(kvp => new Trace($"{kvp.Key}th Percentile", kvp.Value.ToArray())).ToList(), xValues);
+    }
+
+    private static HistogramValue GetHistogramValue(MetricValueBase metric)
+    {
+        if (metric is HistogramValue histogramValue)
+        {
+            return histogramValue;
+        }
+
+        throw new InvalidOperationException("Unexpected metric type: " + metric.GetType());
+    }
+
+    private static bool TryCalculateHistogramPoints(List<DimensionScope> dimensions, DateTime start, DateTime end, Dictionary<int, List<double?>> yValues)
+    {
+        var hasValue = false;
+
+        ulong[]? currentBucketCounts = null;
+        double[]? explicitBounds = null;
+
+        start = start.Subtract(TimeSpan.FromSeconds(1));
+        end = end.Add(TimeSpan.FromSeconds(1));
+
+        foreach (var dimension in dimensions)
+        {
+            for (var i = dimension.Values.Count - 1; i >= 0; i--)
+            {
+                if (i == 0)
+                {
+                    continue;
+                }
+
+                var metric = dimension.Values[i];
+                if ((metric.Start <= end && metric.End >= start) || (metric.Start >= start && metric.End <= end))
+                {
+                    var histogramValue = GetHistogramValue(metric);
+                    explicitBounds ??= histogramValue.ExplicitBounds;
+
+                    var previousHistogramValue = GetHistogramValue(dimension.Values[i - 1]);
+
+                    if (currentBucketCounts is null)
+                    {
+                        currentBucketCounts = new ulong[histogramValue.Values.Length];
+                    }
+                    else if (currentBucketCounts.Length != histogramValue.Values.Length)
+                    {
+                        throw new InvalidOperationException("Histogram values changed size");
+                    }
+
+                    for (var valuesIndex = 0; valuesIndex < histogramValue.Values.Length; valuesIndex++)
+                    {
+                        var newValue = histogramValue.Values[valuesIndex];
+                        // Histogram values are culmulative, so subtract the previous value to get the diff.
+                        newValue -= previousHistogramValue.Values[valuesIndex];
+
+                        currentBucketCounts[valuesIndex] += newValue;
+                    }
+
+                    hasValue = true;
+                }
+            }
+        }
+
+        if (hasValue)
+        {
+            foreach (var percentileValues in yValues)
+            {
+                var percentileValue = CalculatePercentile(percentileValues.Key, currentBucketCounts!, explicitBounds!);
+                percentileValues.Value.Add(percentileValue);
+            }
+        }
+
+        return hasValue;
+    }
+
+    private static double CalculatePercentile(int percentile, ulong[] counts, double[] explicitBounds)
+    {
+        if (percentile < 0 || percentile > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(percentile), percentile, "Percentile must be between 0 and 100.");
+        }
+
+        var totalCount = 0ul;
+        foreach (var count in counts)
+        {
+            totalCount += count;
+        }
+
+        var targetCount = (percentile / 100.0) * totalCount;
+        var accumulatedCount = 0ul;
+
+        for (var i = 0; i < explicitBounds.Length; i++)
+        {
+            accumulatedCount += counts[i];
+
+            if (accumulatedCount >= targetCount)
+            {
+                return explicitBounds[i];
+            }
+        }
+
+        // If the percentile is larger than any bucket value, return the last value
+        return explicitBounds[explicitBounds.Length - 1];
+    }
+
+    private (List<Trace> Y, List<DateTime> X) CalculateChartValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime, string yLabel)
     {
         var pointDuration = Duration / pointCount;
         var yValues = new List<double?>();
@@ -118,7 +274,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
 
             xValues.Add(end.ToLocalTime());
 
-            if (TryCalculateValue(dimensions, start, end, out var tickPointValue))
+            if (TryCalculatePoint(dimensions, start, end, out var tickPointValue))
             {
                 yValues.Add(tickPointValue);
             }
@@ -131,16 +287,16 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         yValues.Reverse();
         xValues.Reverse();
 
-        if (tickUpdate && TryCalculateValue(dimensions, firstPointEndTime!.Value, inProgressDataTime, out var inProgressPointValue))
+        if (tickUpdate && TryCalculatePoint(dimensions, firstPointEndTime!.Value, inProgressDataTime, out var inProgressPointValue))
         {
             yValues.Add(inProgressPointValue);
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
 
-        return (yValues, xValues);
+        return ([ new Trace(yLabel, yValues.ToArray()) ], xValues);
     }
 
-    private static bool TryCalculateValue(List<DimensionScope> dimensions, DateTime start, DateTime end, out double pointValue)
+    private static bool TryCalculatePoint(List<DimensionScope> dimensions, DateTime start, DateTime end, out double pointValue)
     {
         var hasValue = false;
         pointValue = 0d;
@@ -193,6 +349,10 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
             if (item.All)
             {
                 return true;
+            }
+            if (item.Empty)
+            {
+                return string.IsNullOrEmpty(value);
             }
             if (item.Name == value)
             {
@@ -257,15 +417,29 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
     private async Task UpdateChart(bool tickUpdate, DateTime inProgressDataTime)
     {
         var matchedDimensions = Dimensions.Where(MatchDimension).ToList();
-        var (yValues, xValues) = CalculateChartValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime);
+        List<Trace> yValues;
+        List<DateTime> xValues;
+        if (Instrument.Type != OpenTelemetry.Proto.Metrics.V1.Metric.DataOneofCase.Histogram)
+        {
+            var yLabel = Instrument.Unit.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
+            (yValues, xValues) = CalculateChartValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, yLabel);
+        }
+        else
+        {
+            (yValues, xValues) = CalculateHistogramValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime);
+        }
+
+        var traces = yValues.Select(y => new
+        {
+            name = y.Name,
+            values = y.Values
+        }).ToArray();
 
         if (!tickUpdate)
         {
-            var yLabel = Instrument.Unit.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
             await JSRuntime.InvokeVoidAsync("initializeChart",
                 ChartDivId,
-                yLabel,
-                yValues,
+                traces,
                 xValues,
                 inProgressDataTime.ToLocalTime(),
                 (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);
@@ -274,7 +448,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         {
             await JSRuntime.InvokeVoidAsync("updateChart",
                 ChartDivId,
-                yValues,
+                traces,
                 xValues,
                 inProgressDataTime.ToLocalTime(),
                 (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);

@@ -20,6 +20,7 @@ public class OtlpInstrument
     public OtlpMeter Parent { get; init; }
 
     public Dictionary<ReadOnlyMemory<KeyValuePair<string, string>>, DimensionScope> Dimensions { get; } = new(ScopeAttributesComparer.Instance);
+    public Dictionary<string, HashSet<string>> KnownAttributeValues { get; } = new();
 
     public OtlpInstrument(Metric mData, OtlpMeter parent)
     {
@@ -66,9 +67,36 @@ public class OtlpInstrument
 
         if (!Dimensions.TryGetValue(comparableAttributes, out var dimension))
         {
-            var durableAttributes = comparableAttributes.ToArray();
-            Dimensions.Add(durableAttributes, dimension = new DimensionScope(durableAttributes));
+            dimension = AddDimensionScope(comparableAttributes);
         }
+        return dimension;
+    }
+
+    private DimensionScope AddDimensionScope(Memory<KeyValuePair<string, string>> comparableAttributes)
+    {
+        var isFirst = Dimensions.Count == 0;
+        var durableAttributes = comparableAttributes.ToArray();
+        var dimension = new DimensionScope(durableAttributes);
+        Dimensions.Add(durableAttributes, dimension);
+
+        var keys = KnownAttributeValues.Keys.Union(durableAttributes.Select(a => a.Key)).Distinct();
+        foreach (var key in keys)
+        {
+            if (!KnownAttributeValues.TryGetValue(key, out var values))
+            {
+                KnownAttributeValues.Add(key, values = new HashSet<string>());
+
+                // If the key is new and there are already dimensions, add an empty value because there are dimensions without this key.
+                if (!isFirst)
+                {
+                    values.Add(string.Empty);
+                }
+            }
+
+            var currentDimensionValue = OtlpHelpers.GetValue(durableAttributes, key);
+            values.Add(currentDimensionValue ?? string.Empty);
+        }
+
         return dimension;
     }
 

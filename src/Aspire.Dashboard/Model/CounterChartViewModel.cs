@@ -25,7 +25,7 @@ public class DimensionFilterViewModel
         var selectedNames = SelectedValues.Where(v => !v.All).Select(v => v.Name).ToList();
         if (selectedNames.Count == 0)
         {
-            selectedNames = ["(none)"];
+            selectedNames = ["(None)"];
         }
 
         return selectedNames;
@@ -73,5 +73,6 @@ public class DimensionValueViewModel
 {
     public required string Name { get; init; }
     public bool All { get; init; }
+    public bool Empty { get; init; }
 }
 

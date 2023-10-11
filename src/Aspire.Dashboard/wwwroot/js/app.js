@@ -87,14 +87,21 @@ if (matched) {
     window.DefaultBaseLayerLuminance = 1.0;
 }
 
-window.updateChart = function (id, yValues, xValues, rangeStartTime, rangeEndTime) {
+window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime) {
     console.log(`updateChart rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
 
     var chartDiv = document.getElementById(id);
 
+    var xUpdate = [];
+    var yUpdate = [];
+    for (var i = 0; i < traces.length; i++) {
+        xUpdate.push(xValues);
+        yUpdate.push(traces[i].values);
+    }
+
     var data = {
-        x: [xValues],
-        y: [yValues]
+        x: xUpdate,
+        y: yUpdate
     };
 
     var layout = {
@@ -107,41 +114,38 @@ window.updateChart = function (id, yValues, xValues, rangeStartTime, rangeEndTim
     Plotly.update(chartDiv, data, layout);
 };
 
-window.initializeChart = function (id, unit, yValues, xValues, rangeStartTime, rangeEndTime) {
+window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEndTime) {
     console.log(`initializeChart rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
 
     var chartDiv = document.getElementById(id);
 
-    var data = [{
-        x: xValues,
-        y: yValues,
-        //mode: 'lines',
-        line: { color: '#66A1C4' },
-        fill: 'tozeroy',
-        type: 'scatter'
-    }];
+    var data = [];
+    for (var i = 0; i < traces.length; i++) {
+        var t = {
+            x: xValues,
+            y: traces[i].values,
+            name: traces[i].name
+        };
+        data.push(t);
+    }
 
     var layout = {
-        margin: { t: 0, r: 0, b: 70, l: 70 },
+        margin: { t: 0, r: 0, b: 50, l: 50 },
         xaxis: {
             type: 'date',
             range: [rangeEndTime, rangeStartTime],
             fixedrange: true,
-            title: {
-                text: "Time",
-                standoff: 30
-            },
             tickformat: "%H:%M:%S"
         },
         yaxis: {
-            title: {
-                text: unit,
-                standoff: 20
-            },
             rangemode: "tozero",
             fixedrange: true
         },
-        dragMode: true
+        showlegend: true,
+        legend: {
+            orientation: "h",
+            y: -0.15
+        }
     };
 
     var options = { scrollZoom: false, displayModeBar: false };
