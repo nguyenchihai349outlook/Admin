@@ -10,8 +10,11 @@
 @using Microsoft.Fast.Components.FluentUI
 @using System.Web
 @inject NavigationManager NavigationManager
+@inject IDashboardViewModelService DashboardViewModelService
 @inject IJSRuntime JS
 @implements IDisposable
+
+<PageTitle>@DashboardViewModelService.ApplicationName Metrics</PageTitle>
 
 <h1>Metrics</h1>
 

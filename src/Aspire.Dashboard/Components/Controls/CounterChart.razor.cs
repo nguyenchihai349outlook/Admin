@@ -4,7 +4,6 @@
 using Aspire.Dashboard.Model;
 using Aspire.Dashboard.Otlp.Model;
 using Aspire.Dashboard.Otlp.Model.MetricValues;
-using Humanizer;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
@@ -416,7 +415,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
 
     private async Task UpdateChart(bool tickUpdate, DateTime inProgressDataTime)
     {
-        var unit = Instrument.Unit.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
+        var unit = OtlpUnits.GetUnit(Instrument.Unit);//.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
         var matchedDimensions = Dimensions.Where(MatchDimension).ToList();
         List<Trace> yValues;
         List<DateTime> xValues;
