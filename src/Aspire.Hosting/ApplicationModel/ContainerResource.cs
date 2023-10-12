@@ -3,6 +3,8 @@
 
 namespace Aspire.Hosting.ApplicationModel;
 
-public class ContainerResource(string name) : DistributedApplicationResource(name), IDistributedApplicationResourceWithEnvironment
+public class ContainerResource(string name) : DistributedApplicationResource(name), IDistributedApplicationResourceWithEnvironment,
+    IDistributedApplicationResourceWithServiceBindings
 {
+    public IEnumerable<ServiceBindingAnnotation> ServiceBindings => Annotations.OfType<ServiceBindingAnnotation>();
 }

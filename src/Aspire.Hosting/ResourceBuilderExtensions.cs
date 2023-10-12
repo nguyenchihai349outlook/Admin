@@ -11,7 +11,7 @@ public static class ResourceBuilderExtensions
 {
     private const string ConnectionStringEnvironmentName = "ConnectionStrings__";
 
-    public static AllocatedEndpointAnnotation? GetEndpoint<T>(this IDistributedApplicationResourceBuilder<T> builder, string name) where T : IDistributedApplicationResource
+    public static AllocatedEndpointAnnotation? GetAllocatedEndpoint<T>(this IDistributedApplicationResourceBuilder<T> builder, string name) where T : IDistributedApplicationResource
     {
         return builder.Resource.Annotations.OfType<AllocatedEndpointAnnotation>().SingleOrDefault();
     }
@@ -66,7 +66,7 @@ public static class ResourceBuilderExtensions
 
     public static IDistributedApplicationResourceBuilder<TDestination> WithReference<TDestination, TSource>(this IDistributedApplicationResourceBuilder<TDestination> builder, IDistributedApplicationResourceBuilder<TSource> source, string? connectionName = null, bool optional = false)
         where TDestination : IDistributedApplicationResourceWithEnvironment
-        where TSource : IDistributedApplicationResourceWithConnectionString
+        where TSource : IDistributedApplicationResource
     {
         var resource = source.Resource;
         connectionName ??= resource.Name;
@@ -77,59 +77,44 @@ public static class ResourceBuilderExtensions
 
             if (context.PublisherName == "manifest")
             {
-                context.EnvironmentVariables[connectionStringName] = $"{{{resource.Name}.connectionString}}";
+                if (resource is IDistributedApplicationResourceWithConnectionString)
+                {
+                    context.EnvironmentVariables[connectionStringName] = $"{{{resource.Name}.connectionString}}";
+                }
+
+                if (resource is IDistributedApplicationResourceWithServiceBindings)
+                {
+                    // TBD
+                }
+
                 return;
             }
 
-            var connectionString = resource.GetConnectionString() ??
-                builder.ApplicationBuilder.Configuration.GetConnectionString(resource.Name);
-
-            if (string.IsNullOrEmpty(connectionString))
+            if (resource is IDistributedApplicationResourceWithConnectionString resourceWithConnectionString)
             {
-                if (optional)
+                var connectionString = resourceWithConnectionString.GetConnectionString() ??
+                    builder.ApplicationBuilder.Configuration.GetConnectionString(resource.Name);
+
+                if (string.IsNullOrEmpty(connectionString))
                 {
-                    // This is an optional connection string, so we can just return.
-                    return;
+                    if (optional)
+                    {
+                        // This is an optional connection string, so we can just return.
+                        return;
+                    }
+
+                    throw new DistributedApplicationException($"A connection string for '{resource.Name}' could not be retrieved.");
                 }
 
-                throw new DistributedApplicationException($"A connection string for '{resource.Name}' could not be retrieved.");
+                context.EnvironmentVariables[connectionStringName] = connectionString;
             }
 
-            context.EnvironmentVariables[connectionStringName] = connectionString;
+
+            if (resource is IDistributedApplicationResourceWithServiceBindings resourceWithServiceBindings)
+            {
+                resourceWithServiceBindings.PopulateServiceBindings(context);
+            }
         });
-    }
-
-    public static IDistributedApplicationResourceBuilder<TDestination> WithServiceReference<TDestination, TSource>(this IDistributedApplicationResourceBuilder<TDestination> builder, IDistributedApplicationResourceBuilder<TSource> bindingSourceBuilder, string? bindingName = null) where TDestination : IDistributedApplicationResourceWithEnvironment where TSource : IDistributedApplicationResource
-    {
-        // When adding a service reference we get to see whether there is a ServiceReferencesAnnotation
-        // on the resource, if there is then it means we have already been here before and we can just
-        // skip this and note the service binding that we want to apply to the environment in the future
-        // in a single pass. There is one ServiceReferenceAnnotation per service binding source.
-        var serviceReferenceAnnotation = builder.Resource.Annotations
-            .OfType<ServiceReferenceAnnotation>()
-            .Where(sra => sra.Resource == (IDistributedApplicationResource)bindingSourceBuilder.Resource)
-            .SingleOrDefault();
-
-        if (serviceReferenceAnnotation == null)
-        {
-            serviceReferenceAnnotation = new ServiceReferenceAnnotation(bindingSourceBuilder.Resource);
-            builder.WithAnnotation(serviceReferenceAnnotation);
-
-            var callback = CreateServiceReferenceEnvironmentPopulationCallback(serviceReferenceAnnotation);
-            builder.WithEnvironment(callback);
-        }
-
-        // If no specific binding name is specified, go and add all the bindings.
-        if (bindingName == null)
-        {
-            serviceReferenceAnnotation.UseAllBindings = true;
-        }
-        else
-        {
-            serviceReferenceAnnotation.BindingNames.Add(bindingName);
-        }
-
-        return builder;
     }
 
     public static IDistributedApplicationResourceBuilder<T> WithServiceBinding<T>(this IDistributedApplicationResourceBuilder<T> builder, int? hostPort = null, string? scheme = null, string? name = null) where T : IDistributedApplicationResource

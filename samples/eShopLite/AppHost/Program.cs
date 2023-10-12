@@ -1,4 +1,3 @@
-using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
 using Aspire.Hosting.Postgres;
 using Aspire.Hosting.Redis;
@@ -8,7 +7,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 builder.AddAzureProvisioning();
 
 var grafana = builder.AddContainer("grafana", "grafana/grafana")
-                     .WithServiceBinding(containerPort: 3000, name: "grafana-http", scheme: "http");
+                     .AddEndpoint("grafana-http", 3000);
 
 var catalogdb = builder.AddPostgresContainer("postgres").AddDatabase("catalog");
 
@@ -21,15 +20,12 @@ var catalog = builder.AddProject<Projects.CatalogService>("catalogservice")
 var serviceBus = builder.AddAzureServiceBus("messaging", queueNames: ["orders"]);
 
 var basket = builder.AddProject<Projects.BasketService>("basketservice")
-                    .WithServiceBindingForPublisher("manifest", "http", context => context.Binding.AsExternal())
                     .WithReference(redis)
                     .WithReference(serviceBus, optional: true);
 
 builder.AddProject<Projects.MyFrontend>("myfrontend")
-       .WithServiceBindingForPublisher("manifest", "https", context => context.Binding.AsExternal())
-       .WithServiceReference(basket)
-       .WithServiceReference(catalog, bindingName: "http")
-       .WithEnvironment("GRAFANA_URL", () => grafana.GetEndpoint("grafana-http")?.UriString ?? $"{{{grafana.Resource.Name}.bindings.grafana-http}}");
+       .WithReference(basket)
+       .WithReference(catalog.Endpoint("http"));
 
 builder.AddProject<Projects.OrderProcessor>("orderprocessor")
        .WithReference(serviceBus, optional: true)
