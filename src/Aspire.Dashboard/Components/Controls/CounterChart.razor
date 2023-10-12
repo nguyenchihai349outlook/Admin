@@ -10,41 +10,43 @@
 
 <div style="display: grid; grid-template-columns: max-content auto;">
     <div style="grid-column: 1;">
-        <div id="@ChartDivId" style="width:700px; height:400px"></div>
+        <div id="@ChartDivId" style="width:650px; height:400px"></div>
     </div>
     <div style="grid-column: 2;">
-        <table style="margin-left: 10px">
+        <div style="margin-left: 10px">
             <h5>Dimensions</h5>
-            @foreach (var item in _viewModel.DimensionFilters)
-            {
-                <tr>
-                    <td>@item.Name</td>
-                    <td>
-                        <FluentButton Id="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" OnClick="() => item.PopupVisible = !item.PopupVisible">
-                            <FluentOverflow Style="width:250px;">
-                                <ChildContent>
-                                    @foreach (var item in item.GetSelectedValues())
-                                    {
-                                        <FluentOverflowItem>
-                                            <FluentBadge>@item</FluentBadge>
-                                        </FluentOverflowItem>
-                                    }
-                                </ChildContent>
-                            </FluentOverflow>
-                        </FluentButton>
+            <table>
+                @foreach (var item in _viewModel.DimensionFilters)
+                {
+                    <tr>
+                        <td>@item.Name</td>
+                        <td>
+                            <FluentButton Id="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" OnClick="() => item.PopupVisible = !item.PopupVisible">
+                                <FluentOverflow Style="width:250px;">
+                                    <ChildContent>
+                                        @foreach (var item in item.GetSelectedValues())
+                                        {
+                                            <FluentOverflowItem>
+                                                <FluentBadge>@item</FluentBadge>
+                                            </FluentOverflowItem>
+                                        }
+                                    </ChildContent>
+                                </FluentOverflow>
+                            </FluentButton>
 
-                        <FluentPopover Class="dimension-value-popover" AnchorId="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" @bind-Open="item.PopupVisible">
-                            <Body>
-                                <FluentSelect Items="item.Values"
-                                              OptionText="m => m.Name"
-                                              Multiple="true"
-                                              @bind-SelectedOptions="item.SelectedValues"
-                                              @bind-SelectedOptions:after="async () => await DimensionValuesChangedAsync(item)" />
-                            </Body>
-                        </FluentPopover>
-                    </td>
-                </tr>
-            }
-        </table>
+                            <FluentPopover Class="dimension-value-popover" AnchorId="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" @bind-Open="item.PopupVisible">
+                                <Body>
+                                    <FluentSelect Items="item.Values"
+                                                  OptionText="m => m.Name"
+                                                  Multiple="true"
+                                                  @bind-SelectedOptions="item.SelectedValues"
+                                                  @bind-SelectedOptions:after="async () => await DimensionValuesChangedAsync(item)" />
+                                </Body>
+                            </FluentPopover>
+                        </td>
+                    </tr>
+                }
+            </table>
+        </div>
     </div>
 </div>

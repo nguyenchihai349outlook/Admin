@@ -104,7 +104,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         public double?[] Values { get; }
     }
 
-    private (List<Trace> Y, List<DateTime> X) CalculateHistogramValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime)
+    private (List<Trace> Y, List<DateTime> X) CalculateHistogramValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime, string yLabel)
     {
         var pointDuration = Duration / pointCount;
         var yValues = new Dictionary<int, List<double?>>
@@ -151,7 +151,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
 
-        return (yValues.Select(kvp => new Trace($"{kvp.Key}th Percentile", kvp.Value.ToArray())).ToList(), xValues);
+        return (yValues.Select(kvp => new Trace($"p{kvp.Key} - {yLabel}", kvp.Value.ToArray())).ToList(), xValues);
     }
 
     private static HistogramValue GetHistogramValue(MetricValueBase metric)
@@ -416,17 +416,17 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
 
     private async Task UpdateChart(bool tickUpdate, DateTime inProgressDataTime)
     {
+        var unit = Instrument.Unit.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
         var matchedDimensions = Dimensions.Where(MatchDimension).ToList();
         List<Trace> yValues;
         List<DateTime> xValues;
         if (Instrument.Type != OpenTelemetry.Proto.Metrics.V1.Metric.DataOneofCase.Histogram)
         {
-            var yLabel = Instrument.Unit.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
-            (yValues, xValues) = CalculateChartValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, yLabel);
+            (yValues, xValues) = CalculateChartValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
         }
         else
         {
-            (yValues, xValues) = CalculateHistogramValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime);
+            (yValues, xValues) = CalculateHistogramValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
         }
 
         var traces = yValues.Select(y => new
