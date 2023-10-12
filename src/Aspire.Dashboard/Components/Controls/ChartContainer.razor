@@ -1,4 +1,5 @@
 ﻿@namespace Aspire.Dashboard.Components
+
 @using Aspire.Dashboard.Model
 @using Aspire.Dashboard.Otlp.Model
 @using Aspire.Dashboard.Otlp.Model.MetricValues
@@ -8,20 +9,28 @@
     <p>@Instrument.Description</p>
 </div>
 
-<div style="display: grid; grid-template-columns: max-content auto;">
-    <div style="grid-column: 1;">
-        <div id="@ChartDivId" style="width:650px; height:400px"></div>
+<div class="metrics-chart">
+    <div class="metrics-chart-container">
+        <PlotlyChart Instrument="Instrument" Duration="Duration" MatchedDimensions="_matchedDimensions" />
     </div>
-    <div style="grid-column: 2;">
+    <div class="metrics-filters-container">
         <div style="margin-left: 10px">
             <h5>Dimensions</h5>
-            <table>
+            <table style="width:100%">
                 @foreach (var item in _viewModel.DimensionFilters)
                 {
                     <tr>
-                        <td>@item.Name</td>
-                        <td>
-                            <FluentButton Id="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" OnClick="() => item.PopupVisible = !item.PopupVisible">
+                        <td class="dimension-name" title="@item.Name">@item.Name</td>
+                        <td class="dimension-values" title="@string.Join(", ", item.SelectedValues.Select(v => v.Name))">
+                            <FluentAutocomplete TOption="DimensionValueViewModel"
+                                                Width="250px"
+                                                Placeholder="Select filters"
+                                                OnOptionsSearch="item.OnSearchAsync"
+                                                OptionText="@(item => item.Name)"
+                                                @bind-SelectedOptions="item.SelectedValues"
+                                                @bind-SelectedOptions:after="async () => await DimensionValuesChangedAsync(item)" />
+
+@*                             <FluentButton Id="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" OnClick="() => item.PopupVisible = !item.PopupVisible">
                                 <FluentOverflow Style="width:250px;">
                                     <ChildContent>
                                         @foreach (var item in item.GetSelectedValues())
@@ -42,7 +51,7 @@
                                                   @bind-SelectedOptions="item.SelectedValues"
                                                   @bind-SelectedOptions:after="async () => await DimensionValuesChangedAsync(item)" />
                                 </Body>
-                            </FluentPopover>
+                            </FluentPopover> *@
                         </td>
                     </tr>
                 }

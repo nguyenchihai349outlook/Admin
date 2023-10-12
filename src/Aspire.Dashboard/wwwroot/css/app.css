@@ -22,6 +22,35 @@ fluent-toolbar[orientation=horizontal] {
         margin: 0;
     }
 
+.metrics-chart {
+    display: grid;
+    grid-template-columns: max-content 450px;
+}
+
+.metrics-chart-container {
+    grid-column: 1;
+}
+
+.metrics-filters-container {
+    grid-column: 2;
+}
+
+@media (max-width: 1700px) {
+    .metrics-filters-container {
+        grid-column: 1;
+    }
+}
+
+.metrics-filters-container td.dimension-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.metrics-filters-container td.dimension-values {
+    width: auto;
+}
+
 /* Hide any web components that haven't been */
 :not(:defined),
 .before-upgrade {

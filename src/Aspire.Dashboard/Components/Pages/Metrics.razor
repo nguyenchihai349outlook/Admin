@@ -7,12 +7,14 @@
 @using Aspire.Dashboard.Model.Otlp
 @using Aspire.Dashboard.Otlp.Model
 @using Aspire.Dashboard.Otlp.Storage
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using Microsoft.Fast.Components.FluentUI
 @using System.Web
 @inject NavigationManager NavigationManager
 @inject IDashboardViewModelService DashboardViewModelService
 @inject IJSRuntime JS
 @implements IDisposable
+@inject ProtectedSessionStorage ProtectedSessionStore
 
 <PageTitle>@DashboardViewModelService.ApplicationName Metrics</PageTitle>
 
@@ -43,7 +45,7 @@
                             <ChildContent>
                                 @foreach (var meterGroup in _instruments.GroupBy(i => i.Parent).OrderBy(g => g.Key.MeterName))
                                 {
-                                    <FluentTreeItem Class="metrics-tree-item" Text="@meterGroup.Key.MeterName" Data="@meterGroup.Key" title="@meterGroup.Key.MeterName" InitiallyExpanded="@(meterGroup.Key == _selectedMeter)" InitiallySelected="@(_selectedInstrument == null && meterGroup.Key == _selectedMeter)">
+                                    <FluentTreeItem Class="metrics-tree-item" Text="@meterGroup.Key.MeterName" Data="@meterGroup.Key" title="@meterGroup.Key.MeterName" InitiallyExpanded="true" InitiallySelected="@(_selectedInstrument == null && meterGroup.Key == _selectedMeter)">
                                         @foreach (var instrument in meterGroup.OrderBy(i => i.Name))
                                         {
                                             <FluentTreeItem Class="metrics-tree-item" Text="@instrument.Name" Data="@instrument" title="@instrument.Name" InitiallySelected="@(instrument == _selectedInstrument)" />
@@ -57,7 +59,7 @@
                         <div class="metrics-content">
                             @if (_selectedInstrument != null)
                             {
-                                <CounterChart Instrument="_selectedInstrument" Dimensions="_selectedInstrument.Dimensions.Values.ToArray()" Duration="_selectedDuration.Duration" />
+                                <ChartContainer Instrument="_selectedInstrument" Dimensions="_selectedInstrument.Dimensions.Values.ToArray()" Duration="_selectedDuration.Duration" />
 
 @*                                 @foreach (var dimension in _selectedInstrument.Dimensions.Values)
                                 {
@@ -162,7 +164,6 @@
             UpdateApplications();
             StateHasChanged();
         }));
-
         return Task.CompletedTask;
     }
 
@@ -204,15 +205,54 @@
         return Task.CompletedTask;
     }
 
-    private void HandleSelectedTreeItemChanged()
+    private class MetricsSelectedState
     {
+        public const string Key = "Metrics_SelectState";
+        public string? ApplicationId { get; set; }
+        public string? MeterName { get; set; }
+        public string? InstrumentName { get; set; }
+    }
+
+    private async Task HandleSelectedTreeItemChanged()
+    {
+        MetricsSelectedState? state = null;
+
         if (_selectedTreeItem?.Data is OtlpMeter meter)
         {
-            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{meter.MeterName}");
+            state = new MetricsSelectedState { ApplicationId = _selectedApplication.Id, MeterName = meter.MeterName };
         }
         else if (_selectedTreeItem?.Data is OtlpInstrument instrument)
         {
-            NavigationManager.NavigateTo($"/Metrics/{_selectedApplication.Id}/Meter/{instrument.Parent.MeterName}/Instrument/{instrument.Name}");
+            state = new MetricsSelectedState { ApplicationId = _selectedApplication.Id, MeterName = instrument.Parent.MeterName, InstrumentName = instrument.Name };
+        }
+
+        if (state != null)
+        {
+            NavigateTo(state);
+            await ProtectedSessionStore.SetAsync(MetricsSelectedState.Key, state);
+        }
+        else
+        {
+            await ProtectedSessionStore.DeleteAsync(MetricsSelectedState.Key);
+        }
+    }
+
+    private void NavigateTo(MetricsSelectedState state)
+    {
+        if (state.MeterName != null)
+        {
+            if (state.InstrumentName != null)
+            {
+                NavigationManager.NavigateTo($"/Metrics/{state.ApplicationId}/Meter/{state.MeterName}/Instrument/{state.InstrumentName}");
+            }
+            else
+            {
+                NavigationManager.NavigateTo($"/Metrics/{state.ApplicationId}/Meter/{state.MeterName}");
+            }
+        }
+        else
+        {
+            NavigationManager.NavigateTo($"/Metrics/{state.ApplicationId}");
         }
     }
 
@@ -225,8 +265,21 @@
             _metricsSubscription = TelemetryRepository.OnNewMetrics(_selectedApplication.Id, async () =>
             {
                 ViewModel.ClearData();
-                await InvokeAsync(StateHasChanged);
+                await Task.Yield();
+                //await InvokeAsync(StateHasChanged);
             });
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var result = await ProtectedSessionStore.GetAsync<MetricsSelectedState>(MetricsSelectedState.Key);
+            if (result.Success && result.Value is not null)
+            {
+                NavigateTo(result.Value);
+            }
         }
     }
 

@@ -94,7 +94,7 @@ public class OtlpApplication
 
                 if (ApplicationName != "myfrontend" || metric.Name != "http.server.request.duration")
                 {
-                    continue;
+                    //continue;
                 }
 
                 try

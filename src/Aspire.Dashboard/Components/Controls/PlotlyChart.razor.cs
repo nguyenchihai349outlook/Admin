@@ -1,34 +1,29 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Aspire.Dashboard.Model;
 using Aspire.Dashboard.Otlp.Model;
 using Aspire.Dashboard.Otlp.Model.MetricValues;
+using Humanizer;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
 namespace Aspire.Dashboard.Components;
 
-public partial class CounterChart : ComponentBase, IAsyncDisposable
+public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 {
     private const int GRAPH_POINT_COUNT = 30; // 3 minutes
 
     private static int s_lastId;
-
     private readonly int _instanceID = ++s_lastId;
     private string ChartDivId => $"lineChart{_instanceID}";
 
-    private bool _dimensionsOrDurationChanged = true;
-
-    //private double[]? _chartValues;
-
-    private readonly CounterChartViewModel _viewModel = new();
-
     private PeriodicTimer? _tickTimer;
     private Task? _tickTask;
+
     private TimeSpan _tickDuration;
     private DateTime _lastUpdateTime;
     private DateTime _currentDataStartTime;
+    private bool _dimensionsOrDurationChanged;
 
     [Inject]
     public required IJSRuntime JSRuntime { get; set; }
@@ -37,58 +32,83 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
     public required OtlpInstrument Instrument { get; set; }
 
     [Parameter, EditorRequired]
-    public required DimensionScope[] Dimensions { get; set; }
+#pragma warning disable BL0007 // Component parameters should be auto properties
+    public required List<DimensionScope> MatchedDimensions
+#pragma warning restore BL0007 // Component parameters should be auto properties
+    {
+        get => _matchedDimensions;
+        set
+        {
+            if (_matchedDimensions != value)
+            {
+                _matchedDimensions = value;
+                _dimensionsOrDurationChanged = true;
+            }
+        }
+    }
 
     [Parameter, EditorRequired]
     public required TimeSpan Duration { get; set; }
 
-    private static DateTime GetCurrentDataTime()
-    {
-        return DateTime.UtcNow.Subtract(TimeSpan.FromSeconds(1)); // Compensate for delay in receiving metrics from sevices.;
-    }
+    private List<DimensionScope> _matchedDimensions = default!;
 
     protected override void OnInitialized()
     {
         _currentDataStartTime = GetCurrentDataTime();
 
-        foreach (var item in Instrument.KnownAttributeValues.OrderBy(kvp => kvp.Key))
-        {
-            var dimensionModel = new DimensionFilterViewModel
-            {
-                Name = item.Key
-            };
-            dimensionModel.Values.Add(new DimensionValueViewModel
-            {
-                Name = "(All)",
-                All = true
-            });
-            dimensionModel.Values.AddRange(item.Value.OrderBy(v => v).Select(v =>
-            {
-                var empty = string.IsNullOrEmpty(v);
-                return new DimensionValueViewModel
-                {
-                    Name = empty ? "(Empty)" : v,
-                    Empty = empty,
-                };
-            }));
-            _viewModel.DimensionFilters.Add(dimensionModel);
-        }
-
-        foreach (var item in _viewModel.DimensionFilters)
-        {
-            item.SelectedValues = item.Values.ToList();
-            item.SelectedValuesChanged();
-        }
-
-        _tickTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        _tickTimer = new PeriodicTimer(TimeSpan.FromSeconds(0.2));
         _tickTask = Task.Run(UpdateData);
     }
 
-    private async Task DimensionValuesChangedAsync(DimensionFilterViewModel dimensionViewModel)
+    public async ValueTask DisposeAsync()
     {
-        dimensionViewModel.SelectedValuesChanged();
-        _dimensionsOrDurationChanged = true;
-        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+        _tickTimer?.Dispose();
+        if (_tickTask is { } t)
+        {
+            await t.ConfigureAwait(false);
+        }
+    }
+
+    private async Task UpdateData()
+    {
+        var timer = _tickTimer;
+        while (await timer!.WaitForNextTickAsync().ConfigureAwait(false))
+        {
+            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var inProgressDataTime = GetCurrentDataTime();
+
+        while (_currentDataStartTime.Add(_tickDuration) < inProgressDataTime)
+        {
+            _currentDataStartTime = _currentDataStartTime.Add(_tickDuration);
+        }
+
+        if (_dimensionsOrDurationChanged)
+        {
+            _dimensionsOrDurationChanged = false;
+
+            await UpdateChart(tickUpdate: false, inProgressDataTime).ConfigureAwait(false);
+        }
+        else if (_lastUpdateTime.Add(TimeSpan.FromSeconds(0.2)) < DateTime.UtcNow)
+        {
+            // Throttle how often the chart is updated.
+            _lastUpdateTime = DateTime.UtcNow;
+            await UpdateChart(tickUpdate: true, inProgressDataTime).ConfigureAwait(false);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        _tickDuration = Duration / GRAPH_POINT_COUNT;
+    }
+
+    private static DateTime GetCurrentDataTime()
+    {
+        return DateTime.UtcNow.Subtract(TimeSpan.FromSeconds(1)); // Compensate for delay in receiving metrics from sevices.;
     }
 
     private sealed class Trace
@@ -108,9 +128,9 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         var pointDuration = Duration / pointCount;
         var yValues = new Dictionary<int, List<double?>>
         {
-            [50] = new(),
-            [90] = new(),
             [99] = new(),
+            [90] = new(),
+            [50] = new(),
         };
         var xValues = new List<DateTime>();
         var startDate = _currentDataStartTime;
@@ -126,16 +146,13 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
 
             xValues.Add(end.ToLocalTime());
 
-            TryCalculateHistogramPoints(dimensions, start, end, yValues);
-
-            //if ()
-            //{
-            //    yValues.Add(tickPointValue);
-            //}
-            //else
-            //{
-            //    yValues.Add(null);
-            //}
+            if (!TryCalculateHistogramPoints(dimensions, start, end, yValues))
+            {
+                foreach (var item in yValues)
+                {
+                    item.Value.Add(0);
+                }
+            }
         }
 
         foreach (var item in yValues)
@@ -292,7 +309,7 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
 
-        return ([ new Trace(yLabel, yValues.ToArray()) ], xValues);
+        return ([new Trace(yLabel, yValues.ToArray())], xValues);
     }
 
     private static bool TryCalculatePoint(List<DimensionScope> dimensions, DateTime start, DateTime end, out double pointValue)
@@ -328,104 +345,20 @@ public partial class CounterChart : ComponentBase, IAsyncDisposable
         return now.Subtract(pointDuration * pointIndex);
     }
 
-    private bool MatchDimension(DimensionScope dimension)
-    {
-        foreach (var dimensionFilter in _viewModel.DimensionFilters)
-        {
-            if (!MatchFilter(dimension.Attributes, dimensionFilter))
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static bool MatchFilter(KeyValuePair<string, string>[] attributes, DimensionFilterViewModel filter)
-    {
-        var value = OtlpHelpers.GetValue(attributes, filter.Name);
-        foreach (var item in filter.SelectedValues)
-        {
-            if (item.All)
-            {
-                return true;
-            }
-            if (item.Empty)
-            {
-                return string.IsNullOrEmpty(value);
-            }
-            if (item.Name == value)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    protected override void OnParametersSet()
-    {
-        _tickDuration = Duration / GRAPH_POINT_COUNT;
-    }
-
-    private async Task StopTickTimerAsync()
-    {
-        _tickTimer?.Dispose();
-        if (_tickTask is { } t)
-        {
-            await t.ConfigureAwait(false);
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await StopTickTimerAsync().ConfigureAwait(false);
-    }
-
-    private async Task UpdateData()
-    {
-        var timer = _tickTimer;
-        while (await timer!.WaitForNextTickAsync().ConfigureAwait(false))
-        {
-            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        var inProgressDataTime = GetCurrentDataTime();
-
-        while (_currentDataStartTime.Add(_tickDuration) < inProgressDataTime)
-        {
-            _currentDataStartTime = _currentDataStartTime.Add(_tickDuration);
-        }
-
-        if (_dimensionsOrDurationChanged)
-        {
-            _dimensionsOrDurationChanged = false;
-
-            await UpdateChart(tickUpdate: false, inProgressDataTime).ConfigureAwait(false);
-        }
-        else if (_lastUpdateTime.Add(TimeSpan.FromSeconds(0.2)) < DateTime.UtcNow)
-        {
-            // Throttle how often the chart is updated.
-            _lastUpdateTime = DateTime.UtcNow;
-            await UpdateChart(tickUpdate: true, inProgressDataTime).ConfigureAwait(false);
-        }
-    }
-
     private async Task UpdateChart(bool tickUpdate, DateTime inProgressDataTime)
     {
-        var unit = OtlpUnits.GetUnit(Instrument.Unit);//.TrimStart('{').TrimEnd('}').Pluralize().Titleize();
-        var matchedDimensions = Dimensions.Where(MatchDimension).ToList();
+        var unit = OtlpUnits.GetUnit(Instrument.Unit.TrimStart('{').TrimEnd('}'));//.Pluralize().Titleize();
+        unit = unit.Pluralize().Titleize();
+
         List<Trace> yValues;
         List<DateTime> xValues;
         if (Instrument.Type != OpenTelemetry.Proto.Metrics.V1.Metric.DataOneofCase.Histogram)
         {
-            (yValues, xValues) = CalculateChartValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
+            (yValues, xValues) = CalculateChartValues(MatchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
         }
         else
         {
-            (yValues, xValues) = CalculateHistogramValues(matchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
+            (yValues, xValues) = CalculateHistogramValues(MatchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
         }
 
         var traces = yValues.Select(y => new
