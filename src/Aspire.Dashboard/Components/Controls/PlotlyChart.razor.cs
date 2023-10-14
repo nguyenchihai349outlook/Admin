@@ -14,7 +14,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
     private const int GRAPH_POINT_COUNT = 30; // 3 minutes
 
     private static int s_lastId;
-    private readonly int _instanceID = ++s_lastId;
+    private int _instanceID = ++s_lastId;
     private string ChartDivId => $"lineChart{_instanceID}";
 
     private PeriodicTimer? _tickTimer;
@@ -89,6 +89,11 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
     protected override void OnParametersSet()
     {
         _tickDuration = Duration / GRAPH_POINT_COUNT;
+
+        if (_renderedDimensions != MatchedDimensions)
+        {
+            _instanceID++;
+        }
     }
 
     private static DateTime GetCurrentDataTime()

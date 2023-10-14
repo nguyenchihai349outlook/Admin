@@ -23,42 +23,19 @@
                     {
                         <tr>
                             <td class="dimension-name" title="@item.Name">@item.Name</td>
-                        <td class="dimension-values" title="@string.Join(", ", item.SelectedValues.Select(v => v.Name))">
-                            <FluentAutocomplete TOption="DimensionValueViewModel"
-                                                Width="250px"
-                                                Placeholder="Select filters"
-                                                OnOptionsSearch="item.OnSearchAsync"
-                                                OptionText="@(item => item.Name)"
-                                                @bind-SelectedOptions="item.SelectedValues"
-                                                @bind-SelectedOptions:after="async () => await DimensionValuesChangedAsync(item)" />
-
-@*                             <FluentButton Id="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" OnClick="() => item.PopupVisible = !item.PopupVisible">
-                                <FluentOverflow Style="width:250px;">
-                                    <ChildContent>
-                                        @foreach (var item in item.GetSelectedValues())
-                                        {
-                                            <FluentOverflowItem>
-                                                <FluentBadge>@item</FluentBadge>
-                                            </FluentOverflowItem>
-                                        }
-                                    </ChildContent>
-                                </FluentOverflow>
-                            </FluentButton>
-
-                            <FluentPopover Class="dimension-value-popover" AnchorId="@(ChartDivId + "_" + _viewModel.DimensionFilters.IndexOf(item))" @bind-Open="item.PopupVisible">
-                                <Body>
-                                    <FluentSelect Items="item.Values"
-                                                  OptionText="m => m.Name"
-                                                  Multiple="true"
-                                                  @bind-SelectedOptions="item.SelectedValues"
-                                                  @bind-SelectedOptions:after="async () => await DimensionValuesChangedAsync(item)" />
-                                </Body>
-                            </FluentPopover> *@
-                        </td>
-                    </tr>
-                }
-            </table>
+                            <td class="dimension-values" title="@string.Join(", ", item.SelectedValues.Select(v => v.Name))">
+                                <FluentAutocomplete TOption="DimensionValueViewModel"
+                                                    Width="250px"
+                                                    Placeholder="Select filters"
+                                                    OnOptionsSearch="item.OnSearchAsync"
+                                                    OptionText="@(item => item.Name)"
+                                                    @bind-SelectedOptions="item.SelectedValues"
+                                                    @bind-SelectedOptions:after="async () => await DimensionValuesChangedAsync(item)" />
+                            </td>
+                        </tr>
+                    }
+                </table>
+            </div>
         </div>
-    </div>
     }
 </div>

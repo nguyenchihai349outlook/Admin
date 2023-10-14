@@ -90,7 +90,8 @@ if (matched) {
 window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime) {
     console.log(`updateChart rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
 
-    var chartDiv = document.getElementById(id);
+    var chartContainerDiv = document.getElementById(id);
+    var chartDiv = chartContainerDiv.firstChild;
 
     var xUpdate = [];
     var yUpdate = [];
@@ -117,7 +118,12 @@ window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime
 window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEndTime) {
     console.log(`initializeChart rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
 
-    var chartDiv = document.getElementById(id);
+    var chartContainerDiv = document.getElementById(id);
+
+    // Reusing a div can create issues with chart lines appearing beyond the end range.
+    // Workaround this issue by replacing the chart div. Ensures we start from a new state.
+    var chartDiv = document.createElement('div');
+    chartContainerDiv.replaceChildren(chartDiv);
 
     var data = [];
     for (var i = 0; i < traces.length; i++) {
