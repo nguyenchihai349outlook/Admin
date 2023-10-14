@@ -23,7 +23,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
     private TimeSpan _tickDuration;
     private DateTime _lastUpdateTime;
     private DateTime _currentDataStartTime;
-    private bool _dimensionsOrDurationChanged;
+    private List<DimensionScope>? _renderedDimensions;
 
     [Inject]
     public required IJSRuntime JSRuntime { get; set; }
@@ -32,25 +32,10 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
     public required OtlpInstrument Instrument { get; set; }
 
     [Parameter, EditorRequired]
-#pragma warning disable BL0007 // Component parameters should be auto properties
-    public required List<DimensionScope> MatchedDimensions
-#pragma warning restore BL0007 // Component parameters should be auto properties
-    {
-        get => _matchedDimensions;
-        set
-        {
-            if (_matchedDimensions != value)
-            {
-                _matchedDimensions = value;
-                _dimensionsOrDurationChanged = true;
-            }
-        }
-    }
+    public required List<DimensionScope> MatchedDimensions { get; set; }
 
     [Parameter, EditorRequired]
     public required TimeSpan Duration { get; set; }
-
-    private List<DimensionScope> _matchedDimensions = default!;
 
     protected override void OnInitialized()
     {
@@ -87,10 +72,10 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
             _currentDataStartTime = _currentDataStartTime.Add(_tickDuration);
         }
 
-        if (_dimensionsOrDurationChanged)
+        if (_renderedDimensions != MatchedDimensions)
         {
-            _dimensionsOrDurationChanged = false;
-
+            // Dimensions (or entire chart) has changed. Re-render the entire chart.
+            _renderedDimensions = MatchedDimensions;
             await UpdateChart(tickUpdate: false, inProgressDataTime).ConfigureAwait(false);
         }
         else if (_lastUpdateTime.Add(TimeSpan.FromSeconds(0.2)) < DateTime.UtcNow)
@@ -150,7 +135,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
             {
                 foreach (var item in yValues)
                 {
-                    item.Value.Add(0);
+                    item.Value.Add(null);
                 }
             }
         }
@@ -163,7 +148,6 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 
         if (tickUpdate && TryCalculateHistogramPoints(dimensions, firstPointEndTime!.Value, inProgressDataTime, yValues))
         {
-            //yValues.Add(inProgressPointValue);
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
 
@@ -347,8 +331,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 
     private async Task UpdateChart(bool tickUpdate, DateTime inProgressDataTime)
     {
-        var unit = OtlpUnits.GetUnit(Instrument.Unit.TrimStart('{').TrimEnd('}'));//.Pluralize().Titleize();
-        unit = unit.Pluralize().Titleize();
+        var unit = GetDisplayedUnit(Instrument);
 
         List<Trace> yValues;
         List<DateTime> xValues;
@@ -384,6 +367,30 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
                 xValues,
                 inProgressDataTime.ToLocalTime(),
                 (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);
+        }
+    }
+
+    private static string GetDisplayedUnit(OtlpInstrument instrument)
+    {
+        if (!string.IsNullOrEmpty(instrument.Unit))
+        {
+            var unit = OtlpUnits.GetUnit(instrument.Unit.TrimStart('{').TrimEnd('}'));
+            return unit.Pluralize().Titleize();
+        }
+
+        // Hard code for instrument names that don't have units
+        // but have a descriptive name that lets us infer the unit.
+        if (instrument.Name.EndsWith(".count"))
+        {
+            return "Count";
+        }
+        else if (instrument.Name.EndsWith(".length"))
+        {
+            return "Length";
+        }
+        else
+        {
+            return "Value";
         }
     }
 }

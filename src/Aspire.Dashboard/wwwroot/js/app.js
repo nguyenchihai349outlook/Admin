@@ -124,7 +124,7 @@ window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEnd
         var t = {
             x: xValues,
             y: traces[i].values,
-            name: traces[i].name
+            name: traces[i].name || "Value"
         };
         data.push(t);
     }

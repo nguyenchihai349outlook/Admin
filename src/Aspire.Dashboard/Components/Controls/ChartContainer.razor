@@ -13,14 +13,16 @@
     <div class="metrics-chart-container">
         <PlotlyChart Instrument="Instrument" Duration="Duration" MatchedDimensions="_matchedDimensions" />
     </div>
-    <div class="metrics-filters-container">
-        <div style="margin-left: 10px">
-            <h5>Dimensions</h5>
-            <table style="width:100%">
-                @foreach (var item in _viewModel.DimensionFilters)
-                {
-                    <tr>
-                        <td class="dimension-name" title="@item.Name">@item.Name</td>
+    @if (_viewModel.DimensionFilters.Count > 0)
+    {
+        <div class="metrics-filters-container">
+            <div style="margin-left: 10px">
+                <h5>Dimensions</h5>
+                <table style="width:100%">
+                    @foreach (var item in _viewModel.DimensionFilters)
+                    {
+                        <tr>
+                            <td class="dimension-name" title="@item.Name">@item.Name</td>
                         <td class="dimension-values" title="@string.Join(", ", item.SelectedValues.Select(v => v.Name))">
                             <FluentAutocomplete TOption="DimensionValueViewModel"
                                                 Width="250px"
@@ -58,4 +60,5 @@
             </table>
         </div>
     </div>
+    }
 </div>
