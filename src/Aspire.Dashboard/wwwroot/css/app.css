@@ -24,7 +24,7 @@ fluent-toolbar[orientation=horizontal] {
 
 .metrics-chart {
     display: grid;
-    grid-template-columns: max-content 450px;
+    grid-template-columns: min-content auto;
 }
 
 .metrics-chart-header {
