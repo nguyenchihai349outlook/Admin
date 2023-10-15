@@ -27,8 +27,13 @@ fluent-toolbar[orientation=horizontal] {
     grid-template-columns: max-content 450px;
 }
 
+.metrics-chart-header {
+    margin-left: 40px;
+}
+
 .metrics-chart-container {
     grid-column: 1;
+    margin-bottom: 60px;
 }
 
 .metrics-filters-container {
@@ -38,6 +43,7 @@ fluent-toolbar[orientation=horizontal] {
 @media (max-width: 1700px) {
     .metrics-filters-container {
         grid-column: 1;
+        margin-left: 40px;
     }
 }
 

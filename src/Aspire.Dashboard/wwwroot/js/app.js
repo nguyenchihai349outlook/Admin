@@ -87,11 +87,22 @@ if (matched) {
     window.DefaultBaseLayerLuminance = 1.0;
 }
 
+function getThemeColors() {
+    // Get colors from the current light/dark theme.
+    var style = getComputedStyle(document.documentElement);
+    return {
+        backgroundColor: style.getPropertyValue('--neutral-fill-layer-rest'),
+        textColor: style.getPropertyValue('--neutral-foreground-rest')
+    };
+}
+
 window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime) {
     console.log(`updateChart rangeStartTime = ${rangeStartTime}, rangeEndTime = ${rangeEndTime}`);
 
     var chartContainerDiv = document.getElementById(id);
     var chartDiv = chartContainerDiv.firstChild;
+
+    var themeColors = getThemeColors();
 
     var xUpdate = [];
     var yUpdate = [];
@@ -107,8 +118,11 @@ window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime
 
     var layout = {
         xaxis: {
+            type: 'date',
             range: [rangeEndTime, rangeStartTime],
-            fixedrange: true
+            fixedrange: true,
+            tickformat: "%-I:%M:%S %p",
+            color: themeColors.textColor
         }
     };
 
@@ -125,6 +139,8 @@ window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEnd
     var chartDiv = document.createElement('div');
     chartContainerDiv.replaceChildren(chartDiv);
 
+    var themeColors = getThemeColors();
+
     var data = [];
     for (var i = 0; i < traces.length; i++) {
         var t = {
@@ -136,21 +152,27 @@ window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEnd
     }
 
     var layout = {
-        margin: { t: 0, r: 0, b: 50, l: 50 },
+        paper_bgcolor: themeColors.backgroundColor,
+        plot_bgcolor: themeColors.backgroundColor,
+        margin: { t: 0, r: 0, b: 40, l: 50 },
         xaxis: {
             type: 'date',
             range: [rangeEndTime, rangeStartTime],
             fixedrange: true,
-            tickformat: "%H:%M:%S"
+            tickformat: "%-I:%M:%S %p",
+            color: themeColors.textColor
         },
         yaxis: {
             rangemode: "tozero",
-            fixedrange: true
+            fixedrange: true,
+            color: themeColors.textColor
         },
         showlegend: true,
         legend: {
             orientation: "h",
-            y: -0.15
+            font: {
+                color: themeColors.textColor
+            }
         }
     };
 
