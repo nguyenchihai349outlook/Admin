@@ -169,9 +169,17 @@ public partial class Metrics : IDisposable
             _metricsSubscription?.Dispose();
             _metricsSubscription = TelemetryRepository.OnNewMetrics(_selectedApplication.Id, async () =>
             {
-                ViewModel.ClearData();
-                await Task.Yield();
-                //await InvokeAsync(StateHasChanged);
+                if (!string.IsNullOrEmpty(_selectedApplication.Id))
+                {
+                    // If there are more instruments than before then update the UI.
+                    var instruments = TelemetryRepository.GetInstruments(_selectedApplication.Id);
+
+                    if (_instruments is null || instruments.Count > _instruments.Count)
+                    {
+                        _instruments = instruments;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
             });
         }
     }
