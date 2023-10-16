@@ -13,23 +13,14 @@ namespace Aspire.Dashboard.Otlp.Model;
 [DebuggerDisplay("Name = {Name}, Unit = {Unit}, Type = {Type}")]
 public class OtlpInstrument
 {
-    public string Name { get; init; }
-    public string Description { get; init; }
-    public string Unit { get; init; }
-    public Metric.DataOneofCase Type { get; init; }
-    public OtlpMeter Parent { get; init; }
+    public required string Name { get; init; }
+    public required string Description { get; init; }
+    public required string Unit { get; init; }
+    public required OtlpInstrumentType Type { get; init; }
+    public required OtlpMeter Parent { get; init; }
 
     public Dictionary<ReadOnlyMemory<KeyValuePair<string, string>>, DimensionScope> Dimensions { get; } = new(ScopeAttributesComparer.Instance);
     public Dictionary<string, HashSet<string>> KnownAttributeValues { get; } = new();
-
-    public OtlpInstrument(Metric mData, OtlpMeter parent)
-    {
-        Name = mData.Name;
-        Description = mData.Description;
-        Unit = mData.Unit;
-        Type = mData.DataCase;
-        Parent = parent;
-    }
 
     public void AddInstrumentValuesFromGrpc(Metric mData, ref KeyValuePair<string, string>[]? tempAttributes)
     {
@@ -100,6 +91,32 @@ public class OtlpInstrument
         return dimension;
     }
 
+    public static OtlpInstrument Clone(OtlpInstrument instrument, bool cloneData, DateTime valuesStart, DateTime valuesEnd)
+    {
+        var newInstrument = new OtlpInstrument
+        {
+            Name = instrument.Name,
+            Description = instrument.Description,
+            Parent = instrument.Parent,
+            Type = instrument.Type,
+            Unit = instrument.Unit
+        };
+
+        if (cloneData)
+        {
+            foreach (var item in instrument.KnownAttributeValues)
+            {
+                newInstrument.KnownAttributeValues.Add(item.Key, item.Value.ToHashSet());
+            }
+            foreach (var item in instrument.Dimensions)
+            {
+                newInstrument.Dimensions.Add(item.Key, DimensionScope.Clone(item.Value, valuesStart, valuesEnd));
+            }
+        }
+
+        return newInstrument;
+    }
+
     private sealed class ScopeAttributesComparer : IEqualityComparer<ReadOnlyMemory<KeyValuePair<string, string>>>
     {
         public static readonly ScopeAttributesComparer Instance = new();
@@ -129,5 +146,5 @@ public class OtlpInstrument
         {
             return string.Compare(x.Key, y.Key, StringComparison.Ordinal);
         }
-    }    
+    }
 }

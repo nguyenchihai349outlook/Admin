@@ -17,4 +17,11 @@ public abstract class MetricValueBase
         Start = start;
         End = end;
     }
+
+    internal static MetricValueBase Clone(MetricValueBase item)
+    {
+        return item.Clone();
+    }
+
+    protected abstract MetricValueBase Clone();
 }

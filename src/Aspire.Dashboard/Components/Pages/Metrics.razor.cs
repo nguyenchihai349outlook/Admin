@@ -76,7 +76,7 @@ public partial class Metrics : IDisposable
     {
         _selectedApplication = _applications.SingleOrDefault(e => e.Id == ApplicationInstanceId) ?? _applications.ElementAtOrDefault(1) ?? s_selectApplication;
         ViewModel.ApplicationServiceId = _selectedApplication.Id;
-        _instruments = !string.IsNullOrEmpty(_selectedApplication.Id) ? TelemetryRepository.GetInstruments(_selectedApplication.Id) : null;
+        _instruments = !string.IsNullOrEmpty(_selectedApplication.Id) ? TelemetryRepository.GetInstrumentsSummary(_selectedApplication.Id) : null;
 
         _selectedMeter = null;
         _selectedInstrument = null;
@@ -85,7 +85,7 @@ public partial class Metrics : IDisposable
             _selectedMeter = _instruments.FirstOrDefault(i => i.Parent.MeterName == MeterName)?.Parent;
             if (_selectedMeter != null && !string.IsNullOrEmpty(InstrumentName))
             {
-                _selectedInstrument = _instruments.FirstOrDefault(i => i.Name == InstrumentName);
+                _selectedInstrument = TelemetryRepository.GetInstrument(ApplicationInstanceId!, MeterName, InstrumentName);
             }
         }
 
@@ -169,10 +169,11 @@ public partial class Metrics : IDisposable
             _metricsSubscription?.Dispose();
             _metricsSubscription = TelemetryRepository.OnNewMetrics(_selectedApplication.Id, async () =>
             {
-                if (!string.IsNullOrEmpty(_selectedApplication.Id))
+                var selectedApplicationId = _selectedApplication.Id;
+                if (!string.IsNullOrEmpty(selectedApplicationId))
                 {
                     // If there are more instruments than before then update the UI.
-                    var instruments = TelemetryRepository.GetInstruments(_selectedApplication.Id);
+                    var instruments = TelemetryRepository.GetInstrumentsSummary(selectedApplicationId);
 
                     if (_instruments is null || instruments.Count > _instruments.Count)
                     {

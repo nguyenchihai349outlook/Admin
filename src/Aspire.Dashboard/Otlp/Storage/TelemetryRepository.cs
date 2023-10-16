@@ -571,13 +571,23 @@ public class TelemetryRepository
         return newSpan;
     }
 
-    public List<OtlpInstrument> GetInstruments(string applicationServiceId)
+    public List<OtlpInstrument> GetInstrumentsSummary(string applicationServiceId)
     {
         if (!_applications.TryGetValue(applicationServiceId, out var application))
         {
             return new List<OtlpInstrument>();
         }
 
-        return application.GetInstruments();
+        return application.GetInstrumentsSummary();
+    }
+
+    public OtlpInstrument? GetInstrument(string applicationServiceId, string meterName, string instrumentName)
+    {
+        if (!_applications.TryGetValue(applicationServiceId, out var application))
+        {
+            return null;
+        }
+
+        return application.GetInstrument(meterName, instrumentName, default, default);
     }
 }

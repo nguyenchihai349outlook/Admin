@@ -1,7 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using Google.Protobuf.Collections;
 using Microsoft.Extensions.Logging;
@@ -21,8 +20,9 @@ public class OtlpApplication
     public string InstanceId { get; }
     public int Suffix { get; }
 
-    private readonly ConcurrentDictionary<string, OtlpMeter> _meters = new();
-    private readonly ConcurrentDictionary<(string MeterName, string InstrumentName), OtlpInstrument> _instruments = new();
+    private readonly ReaderWriterLockSlim _metricsLock = new();
+    private readonly Dictionary<string, OtlpMeter> _meters = new();
+    private readonly Dictionary<(string MeterName, string InstrumentName), OtlpInstrument> _instruments = new();
 
     private readonly ILogger _logger;
 
@@ -82,57 +82,114 @@ public class OtlpApplication
 
     public void AddMetrics(AddContext context, RepeatedField<ScopeMetrics> scopeMetrics)
     {
-        // Temporary attributes array to use when adding metrics to the instruments.
-        KeyValuePair<string, string>[]? tempAttributes = null;
+        _metricsLock.EnterWriteLock();
 
-        foreach (var sm in scopeMetrics)
+        try
         {
-            foreach (var metric in sm.Metrics)
+            // Temporary attributes array to use when adding metrics to the instruments.
+            KeyValuePair<string, string>[]? tempAttributes = null;
+
+            foreach (var sm in scopeMetrics)
             {
-                // kestrel.active_connections
-                // http.server.request.duration
-
-                if (ApplicationName != "myfrontend" || metric.Name != "http.server.request.duration")
+                foreach (var metric in sm.Metrics)
                 {
-                    //continue;
-                }
+                    // kestrel.active_connections
+                    // http.server.request.duration
 
-                try
-                {
-                    if (!_instruments.TryGetValue((metric.Name, sm.Scope.Name), out var instrument))
+                    if (ApplicationName != "myfrontend" || metric.Name != "http.server.request.duration")
                     {
-                        instrument = GetInstrumentSlow(metric, sm.Scope);
+                        //continue;
                     }
 
-                    lock (instrument)
+                    try
                     {
-                        instrument.AddInstrumentValuesFromGrpc(metric, ref tempAttributes);
+                        var instrumentKey = (metric.Name, sm.Scope.Name);
+                        if (!_instruments.TryGetValue(instrumentKey, out var instrument))
+                        {
+                            _instruments.Add(instrumentKey, instrument = new OtlpInstrument
+                            {
+                                Name = metric.Name,
+                                Description = metric.Description,
+                                Unit = metric.Unit,
+                                Type = MapMetricType(metric.DataCase),
+                                Parent = GetMeter(sm.Scope)
+                            });
+                        }
+
+                        lock (instrument)
+                        {
+                            instrument.AddInstrumentValuesFromGrpc(metric, ref tempAttributes);
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    context.FailureCount++;
-                    _logger.LogInformation(ex, "Error adding metric.");
+                    catch (Exception ex)
+                    {
+                        context.FailureCount++;
+                        _logger.LogInformation(ex, "Error adding metric.");
+                    }
                 }
             }
         }
-
-        OtlpInstrument GetInstrumentSlow(Metric metric, InstrumentationScope scope)
+        finally
         {
-            return _instruments.GetOrAdd((metric.Name, scope.Name), key =>
-            {
-                return new OtlpInstrument(metric, GetMeter(scope));
-            });
+            _metricsLock.ExitWriteLock();
         }
+    }
+
+    private static OtlpInstrumentType MapMetricType(Metric.DataOneofCase data)
+    {
+        return data switch
+        {
+            Metric.DataOneofCase.Gauge => OtlpInstrumentType.Gauge,
+            Metric.DataOneofCase.Sum => OtlpInstrumentType.Sum,
+            Metric.DataOneofCase.Histogram => OtlpInstrumentType.Histogram,
+            _ => OtlpInstrumentType.Unsupported
+        };
     }
 
     private OtlpMeter GetMeter(InstrumentationScope scope)
     {
-        return _meters.GetOrAdd(scope.Name, static (name, scope) => new OtlpMeter(scope), scope);
+        if (!_meters.TryGetValue(scope.Name, out var meter))
+        {
+            _meters.Add(scope.Name, meter = new OtlpMeter(scope));
+        }
+        return meter;
     }
 
-    public List<OtlpInstrument> GetInstruments()
+    public OtlpInstrument? GetInstrument(string meterName, string instrumentName, DateTime valuesStart, DateTime valuesEnd)
     {
-        return _instruments.Values.ToList();
+        _metricsLock.EnterReadLock();
+
+        try
+        {
+            if (!_instruments.TryGetValue((meterName, instrumentName), out var instrument))
+            {
+                return null;
+            }
+
+            return OtlpInstrument.Clone(instrument, cloneData: true, valuesStart: valuesStart, valuesEnd: valuesEnd);
+        }
+        finally
+        {
+            _metricsLock.ExitReadLock();
+        }
+    }
+
+    public List<OtlpInstrument> GetInstrumentsSummary()
+    {
+        _metricsLock.EnterReadLock();
+
+        try
+        {
+            var instruments = new List<OtlpInstrument>(_instruments.Count);
+            foreach (var instrument in _instruments)
+            {
+                instruments.Add(OtlpInstrument.Clone(instrument.Value, cloneData: false, valuesStart: default, valuesEnd: default));
+            }
+            return instruments;
+        }
+        finally
+        {
+            _metricsLock.ExitReadLock();
+        }
     }
 }

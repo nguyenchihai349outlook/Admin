@@ -340,7 +340,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 
         List<Trace> yValues;
         List<DateTime> xValues;
-        if (Instrument.Type != OpenTelemetry.Proto.Metrics.V1.Metric.DataOneofCase.Histogram)
+        if (Instrument.Type != OtlpInstrumentType.Histogram)
         {
             (yValues, xValues) = CalculateChartValues(MatchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
         }

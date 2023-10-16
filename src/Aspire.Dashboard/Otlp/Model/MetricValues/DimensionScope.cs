@@ -10,13 +10,11 @@ namespace Aspire.Dashboard.Otlp.Model.MetricValues;
 public class DimensionScope
 {
     public string Name { get; init; }
-    public KeyValuePair<string, string>[] Attributes { get; }
+    public KeyValuePair<string, string>[] Attributes { get; init; }
     public readonly List<MetricValueBase> Values = new();
 
     // Used to aid in merging values that are the same in a concurrent environment
     private MetricValueBase? _lastValue;
-
-    public bool IsHistogram => Values.Count > 0 && Values[0] is HistogramValue;
 
     public DimensionScope(KeyValuePair<string, string>[] attributes)
     {
@@ -92,5 +90,19 @@ public class DimensionScope
             _lastValue = new HistogramValue(h.BucketCounts, h.Sum, h.Count, start, end, h.ExplicitBounds);
             Values.Add(_lastValue);
         }
+    }
+
+    internal static DimensionScope Clone(DimensionScope value, DateTime valuesStart, DateTime valuesEnd)
+    {
+        _ = valuesStart;
+        _ = valuesEnd;
+
+        var newDimensionScope = new DimensionScope(value.Attributes);
+        foreach (var item in value.Values)
+        {
+            newDimensionScope.Values.Add(MetricValueBase.Clone(item));
+        }
+
+        return newDimensionScope;
     }
 }
