@@ -117,7 +117,6 @@ window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime
         x: xUpdate,
         y: yUpdate,
         text: tooltipsUpdate,
-        hovertext: tooltipsUpdate,
     };
 
     var layout = {
@@ -153,7 +152,6 @@ window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEnd
             y: traces[i].values,
             name: name,
             text: traces[i].tooltips,
-            hovertext: traces[i].tooltips,
             hoverinfo: 'text',
             line: { width: 0 },
             stackgroup: "one"
@@ -184,7 +182,9 @@ window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEnd
             font: {
                 color: themeColors.textColor
             },
-            traceorder: "normal"
+            traceorder: "normal",
+            itemclick: false,
+            itemdoubleclick: false
         }
     };
 

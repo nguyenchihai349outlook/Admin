@@ -89,18 +89,10 @@ public partial class PlotlyChart : ComponentBase
 
     private sealed class Trace
     {
-        public Trace(string name, List<double?> values, List<double?> diffValues, List<string?> tooltips)
-        {
-            Name = name;
-            Values = values;
-            DiffValues = diffValues;
-            Tooltips = tooltips;
-        }
-
-        public string Name { get; }
-        public List<double?> Values { get; }
-        public List<double?> DiffValues { get; }
-        public List<string?> Tooltips { get; }
+        public required string Name { get; init; }
+        public List<double?> Values { get; } = new();
+        public List<double?> DiffValues { get; } = new();
+        public List<string?> Tooltips { get; } = new();
     }
 
     private (List<Trace> Y, List<DateTime> X) CalculateHistogramValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime, string yLabel)
@@ -108,9 +100,9 @@ public partial class PlotlyChart : ComponentBase
         var pointDuration = Duration / pointCount;
         var traces = new Dictionary<int, Trace>
         {
-            [50] = new("p50 " + yLabel, new(), new(), new()),
-            [90] = new("p90 " + yLabel, new(), new(), new()),
-            [99] = new("p99 " + yLabel, new(), new(), new()),
+            [50] = new Trace { Name = $"P50 {yLabel}" },
+            [90] = new Trace { Name = $"P90 {yLabel}" },
+            [99] = new Trace { Name = $"P99 {yLabel}" },
         };
         var xValues = new List<DateTime>();
         var startDate = _currentDataStartTime;
@@ -161,7 +153,7 @@ public partial class PlotlyChart : ComponentBase
 
                 if (diffValue > 0)
                 {
-                    currentTrace.Tooltips.Add(currentTrace.Name + " - " + xValues[i].ToString(CultureInfo.InvariantCulture) + " - " + currentTrace.Values[i]);
+                    currentTrace.Tooltips.Add(FormatTooltip(currentTrace.Name, currentTrace.Values[i].GetValueOrDefault(), xValues[i]));
                 }
                 else
                 {
@@ -174,6 +166,11 @@ public partial class PlotlyChart : ComponentBase
             previousValues = currentTrace;
         }
         return (traces.Select(kvp => kvp.Value).ToList(), xValues);
+    }
+
+    private string FormatTooltip(string name, double yValue, DateTime xValue)
+    {
+        return $"<b>{InstrumentViewModel.Instrument?.Name}</b><br />{name}: {yValue.ToString("##,0.######", CultureInfo.InvariantCulture)}<br />Time: {xValue.ToString("h:mm:ss tt", CultureInfo.InvariantCulture)}";
     }
 
     private static HistogramValue GetHistogramValue(MetricValueBase metric)
@@ -313,13 +310,26 @@ public partial class PlotlyChart : ComponentBase
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
 
-        var tooltips = new List<string?>();
+        var trace = new Trace
+        {
+            Name = yLabel
+        };
+
         for (var i = 0; i < xValues.Count; i++)
         {
-            tooltips.Add($"{yLabel} - {xValues[i].ToString(CultureInfo.InvariantCulture)} - {yValues[i]}");
+            trace.Values.AddRange(yValues);
+            trace.DiffValues.AddRange(yValues);
+            if (yValues[i] is not null)
+            {
+                trace.Tooltips.Add(FormatTooltip(yLabel, yValues[i]!.Value, xValues[i]));
+            }
+            else
+            {
+                trace.Tooltips.Add(null);
+            }
         }
 
-        return ([new Trace(yLabel, yValues, yValues, tooltips)], xValues);
+        return ([trace], xValues);
     }
 
     private static bool TryCalculatePoint(List<DimensionScope> dimensions, DateTime start, DateTime end, out double pointValue)

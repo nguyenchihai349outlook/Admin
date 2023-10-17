@@ -52,10 +52,18 @@
                             else if (_selectedMeter != null)
                             {
                                 <h3>@_selectedMeter.MeterName</h3>
-                                @foreach (var item in _instruments.Where(i => i.Parent == _selectedMeter))
-                                {
-                                    <p>@item.Name: @item.Description</p>
-                                }
+                                <table style="max-width:1100px;">
+                                    @foreach (var item in _instruments.Where(i => i.Parent == _selectedMeter).OrderBy(i => i.Name))
+                                    {
+                                        <tr>
+                                            <td>
+                                                <FluentAnchor Href="@($"/Metrics/{_selectedApplication.Id}/Meter/{item.Parent.MeterName}/Instrument/{item.Name}")" Appearance="Appearance.Lightweight">@item.Name</FluentAnchor>
+                                            </td>
+                                            <td>@item.Description</td>
+                                        </tr>
+                                    }
+
+                                </table>
                             }
                             else
                             {
