@@ -1,6 +1,9 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics;
+using System.Globalization;
+using Aspire.Dashboard.Model;
 using Aspire.Dashboard.Otlp.Model;
 using Aspire.Dashboard.Otlp.Model.MetricValues;
 using Humanizer;
@@ -9,30 +12,25 @@ using Microsoft.JSInterop;
 
 namespace Aspire.Dashboard.Components;
 
-public partial class PlotlyChart : ComponentBase, IAsyncDisposable
+public partial class PlotlyChart : ComponentBase
 {
     private const int GRAPH_POINT_COUNT = 30; // 3 minutes
 
     private static int s_lastId;
-    private int _instanceID = ++s_lastId;
+    private readonly int _instanceID = ++s_lastId;
     private string ChartDivId => $"lineChart{_instanceID}";
-
-    private PeriodicTimer? _tickTimer;
-    private Task? _tickTask;
 
     private TimeSpan _tickDuration;
     private DateTime _lastUpdateTime;
     private DateTime _currentDataStartTime;
-    private List<DimensionScope>? _renderedDimensions;
+    private List<KeyValuePair<string, string>[]>? _renderedDimensionAttributes;
+    private OtlpInstrumentKey? _renderedInstrument;
 
     [Inject]
     public required IJSRuntime JSRuntime { get; set; }
 
     [Parameter, EditorRequired]
-    public required OtlpInstrument Instrument { get; set; }
-
-    [Parameter, EditorRequired]
-    public required List<DimensionScope> MatchedDimensions { get; set; }
+    public required InstrumentViewModel InstrumentViewModel { get; set; }
 
     [Parameter, EditorRequired]
     public required TimeSpan Duration { get; set; }
@@ -40,31 +38,16 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
     protected override void OnInitialized()
     {
         _currentDataStartTime = GetCurrentDataTime();
-
-        _tickTimer = new PeriodicTimer(TimeSpan.FromSeconds(0.2));
-        _tickTask = Task.Run(UpdateData);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _tickTimer?.Dispose();
-        if (_tickTask is { } t)
-        {
-            await t.ConfigureAwait(false);
-        }
-    }
-
-    private async Task UpdateData()
-    {
-        var timer = _tickTimer;
-        while (await timer!.WaitForNextTickAsync().ConfigureAwait(false))
-        {
-            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
-        }
+        InstrumentViewModel.OnDataUpdate = OnInstrumentDataUpdate;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (InstrumentViewModel.Instrument is null || InstrumentViewModel.MatchedDimensions is null)
+        {
+            return;
+        }
+
         var inProgressDataTime = GetCurrentDataTime();
 
         while (_currentDataStartTime.Add(_tickDuration) < inProgressDataTime)
@@ -72,10 +55,13 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
             _currentDataStartTime = _currentDataStartTime.Add(_tickDuration);
         }
 
-        if (_renderedDimensions != MatchedDimensions)
+        var dimensionAttributes = InstrumentViewModel.MatchedDimensions.Select(d => d.Attributes).ToList();
+        if (_renderedInstrument is null || _renderedInstrument != InstrumentViewModel.Instrument.GetKey() ||
+            _renderedDimensionAttributes is null || !_renderedDimensionAttributes.SequenceEqual(dimensionAttributes))
         {
             // Dimensions (or entire chart) has changed. Re-render the entire chart.
-            _renderedDimensions = MatchedDimensions;
+            _renderedInstrument = InstrumentViewModel.Instrument.GetKey();
+            _renderedDimensionAttributes = dimensionAttributes;
             await UpdateChart(tickUpdate: false, inProgressDataTime).ConfigureAwait(false);
         }
         else if (_lastUpdateTime.Add(TimeSpan.FromSeconds(0.2)) < DateTime.UtcNow)
@@ -89,11 +75,11 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
     protected override void OnParametersSet()
     {
         _tickDuration = Duration / GRAPH_POINT_COUNT;
+    }
 
-        if (_renderedDimensions != MatchedDimensions)
-        {
-            _instanceID++;
-        }
+    private Task OnInstrumentDataUpdate()
+    {
+        return InvokeAsync(StateHasChanged);
     }
 
     private static DateTime GetCurrentDataTime()
@@ -103,24 +89,28 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 
     private sealed class Trace
     {
-        public Trace(string name, double?[] values)
+        public Trace(string name, List<double?> values, List<double?> diffValues, List<string?> tooltips)
         {
             Name = name;
             Values = values;
+            DiffValues = diffValues;
+            Tooltips = tooltips;
         }
 
         public string Name { get; }
-        public double?[] Values { get; }
+        public List<double?> Values { get; }
+        public List<double?> DiffValues { get; }
+        public List<string?> Tooltips { get; }
     }
 
     private (List<Trace> Y, List<DateTime> X) CalculateHistogramValues(List<DimensionScope> dimensions, int pointCount, bool tickUpdate, DateTime inProgressDataTime, string yLabel)
     {
         var pointDuration = Duration / pointCount;
-        var yValues = new Dictionary<int, List<double?>>
+        var traces = new Dictionary<int, Trace>
         {
-            [99] = new(),
-            [90] = new(),
-            [50] = new(),
+            [50] = new("p50 " + yLabel, new(), new(), new()),
+            [90] = new("p90 " + yLabel, new(), new(), new()),
+            [99] = new("p99 " + yLabel, new(), new(), new()),
         };
         var xValues = new List<DateTime>();
         var startDate = _currentDataStartTime;
@@ -136,27 +126,54 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 
             xValues.Add(end.ToLocalTime());
 
-            if (!TryCalculateHistogramPoints(dimensions, start, end, yValues))
+            if (!TryCalculateHistogramPoints(dimensions, start, end, traces))
             {
-                foreach (var item in yValues)
+                foreach (var trace in traces)
                 {
-                    item.Value.Add(null);
+                    trace.Value.Values.Add(null);
                 }
             }
         }
 
-        foreach (var item in yValues)
+        foreach (var item in traces)
         {
-            item.Value.Reverse();
+            item.Value.Values.Reverse();
         }
         xValues.Reverse();
 
-        if (tickUpdate && TryCalculateHistogramPoints(dimensions, firstPointEndTime!.Value, inProgressDataTime, yValues))
+        if (tickUpdate && TryCalculateHistogramPoints(dimensions, firstPointEndTime!.Value, inProgressDataTime, traces))
         {
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
 
-        return (yValues.Select(kvp => new Trace($"p{kvp.Key} - {yLabel}", kvp.Value.ToArray())).ToList(), xValues);
+        var diffValues = new List<double>();
+        var tooltips = new List<string?>();
+        Trace? previousValues = null;
+        foreach (var trace in traces.OrderBy(kvp => kvp.Key))
+        {
+            var currentTrace = trace.Value;
+
+            for (var i = 0; i < currentTrace.Values.Count; i++)
+            {
+                double? diffValue = (previousValues != null)
+                    ? currentTrace.Values[i] - previousValues.Values[i] ?? 0
+                    : currentTrace.Values[i];
+
+                if (diffValue > 0)
+                {
+                    currentTrace.Tooltips.Add(currentTrace.Name + " - " + xValues[i].ToString(CultureInfo.InvariantCulture) + " - " + currentTrace.Values[i]);
+                }
+                else
+                {
+                    currentTrace.Tooltips.Add(null);
+                }
+
+                currentTrace.DiffValues.Add(diffValue);
+            }
+
+            previousValues = currentTrace;
+        }
+        return (traces.Select(kvp => kvp.Value).ToList(), xValues);
     }
 
     private static HistogramValue GetHistogramValue(MetricValueBase metric)
@@ -169,7 +186,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
         throw new InvalidOperationException("Unexpected metric type: " + metric.GetType());
     }
 
-    private static bool TryCalculateHistogramPoints(List<DimensionScope> dimensions, DateTime start, DateTime end, Dictionary<int, List<double?>> yValues)
+    private static bool TryCalculateHistogramPoints(List<DimensionScope> dimensions, DateTime start, DateTime end, Dictionary<int, Trace> traces)
     {
         var hasValue = false;
 
@@ -189,7 +206,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
                 }
 
                 var metric = dimension.Values[i];
-                if ((metric.Start <= end && metric.End >= start) || (metric.Start >= start && metric.End <= end))
+                if (metric.Start >= start && metric.Start <= end)
                 {
                     var histogramValue = GetHistogramValue(metric);
                     explicitBounds ??= histogramValue.ExplicitBounds;
@@ -218,20 +235,18 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
                 }
             }
         }
-
         if (hasValue)
         {
-            foreach (var percentileValues in yValues)
+            foreach (var percentileValues in traces)
             {
                 var percentileValue = CalculatePercentile(percentileValues.Key, currentBucketCounts!, explicitBounds!);
-                percentileValues.Value.Add(percentileValue);
+                percentileValues.Value.Values.Add(percentileValue);
             }
         }
-
         return hasValue;
     }
 
-    private static double CalculatePercentile(int percentile, ulong[] counts, double[] explicitBounds)
+    private static double? CalculatePercentile(int percentile, ulong[] counts, double[] explicitBounds)
     {
         if (percentile < 0 || percentile > 100)
         {
@@ -298,7 +313,13 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
             xValues.Add(inProgressDataTime.ToLocalTime());
         }
 
-        return ([new Trace(yLabel, yValues.ToArray())], xValues);
+        var tooltips = new List<string?>();
+        for (var i = 0; i < xValues.Count; i++)
+        {
+            tooltips.Add($"{yLabel} - {xValues[i].ToString(CultureInfo.InvariantCulture)} - {yValues[i]}");
+        }
+
+        return ([new Trace(yLabel, yValues, yValues, tooltips)], xValues);
     }
 
     private static bool TryCalculatePoint(List<DimensionScope> dimensions, DateTime start, DateTime end, out double pointValue)
@@ -308,6 +329,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 
         foreach (var dimension in dimensions)
         {
+            var dimensionValue = 0d;
             for (var i = dimension.Values.Count - 1; i >= 0; i--)
             {
                 var metric = dimension.Values[i];
@@ -320,10 +342,12 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
                         _ => 0// throw new InvalidOperationException("Unexpected metric type: " + metric.GetType())
                     };
 
-                    pointValue += value;
+                    dimensionValue = Math.Max(value, dimensionValue);
                     hasValue = true;
                 }
             }
+
+            pointValue += dimensionValue;
         }
 
         return hasValue;
@@ -336,30 +360,34 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
 
     private async Task UpdateChart(bool tickUpdate, DateTime inProgressDataTime)
     {
-        var unit = GetDisplayedUnit(Instrument);
+        Debug.Assert(InstrumentViewModel.Instrument != null);
+        Debug.Assert(InstrumentViewModel.MatchedDimensions != null);
 
-        List<Trace> yValues;
+        var unit = GetDisplayedUnit(InstrumentViewModel.Instrument);
+
+        List<Trace> traces;
         List<DateTime> xValues;
-        if (Instrument.Type != OtlpInstrumentType.Histogram)
+        if (InstrumentViewModel.Instrument.Type != OtlpInstrumentType.Histogram)
         {
-            (yValues, xValues) = CalculateChartValues(MatchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
+            (traces, xValues) = CalculateChartValues(InstrumentViewModel.MatchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
         }
         else
         {
-            (yValues, xValues) = CalculateHistogramValues(MatchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
+            (traces, xValues) = CalculateHistogramValues(InstrumentViewModel.MatchedDimensions, GRAPH_POINT_COUNT, tickUpdate, inProgressDataTime, unit);
         }
 
-        var traces = yValues.Select(y => new
+        var traceDtos = traces.Select(y => new
         {
             name = y.Name,
-            values = y.Values
+            values = y.DiffValues,
+            tooltips = y.Tooltips
         }).ToArray();
 
         if (!tickUpdate)
         {
             await JSRuntime.InvokeVoidAsync("initializeChart",
                 ChartDivId,
-                traces,
+                traceDtos,
                 xValues,
                 inProgressDataTime.ToLocalTime(),
                 (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);
@@ -368,7 +396,7 @@ public partial class PlotlyChart : ComponentBase, IAsyncDisposable
         {
             await JSRuntime.InvokeVoidAsync("updateChart",
                 ChartDivId,
-                traces,
+                traceDtos,
                 xValues,
                 inProgressDataTime.ToLocalTime(),
                 (inProgressDataTime - Duration).ToLocalTime()).ConfigureAwait(false);

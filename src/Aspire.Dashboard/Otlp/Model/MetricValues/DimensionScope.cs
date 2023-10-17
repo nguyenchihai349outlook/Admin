@@ -83,11 +83,20 @@ public class DimensionScope
         }
         else
         {
+            // If the explicit bounds are the same as the last value, reuse them.
+            double[] explicitBounds;
             if (lastHistogramValue is not null)
             {
                 start = lastHistogramValue.End;
+                explicitBounds = lastHistogramValue.ExplicitBounds.SequenceEqual(h.ExplicitBounds)
+                    ? lastHistogramValue.ExplicitBounds
+                    : h.ExplicitBounds.ToArray();
             }
-            _lastValue = new HistogramValue(h.BucketCounts, h.Sum, h.Count, start, end, h.ExplicitBounds);
+            else
+            {
+                explicitBounds = h.ExplicitBounds.ToArray();
+            }
+            _lastValue = new HistogramValue(h.BucketCounts.ToArray(), h.Sum, h.Count, start, end, explicitBounds);
             Values.Add(_lastValue);
         }
     }

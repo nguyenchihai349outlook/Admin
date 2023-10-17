@@ -106,14 +106,18 @@ window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime
 
     var xUpdate = [];
     var yUpdate = [];
+    var tooltipsUpdate = [];
     for (var i = 0; i < traces.length; i++) {
         xUpdate.push(xValues);
         yUpdate.push(traces[i].values);
+        tooltipsUpdate.push(traces[i].tooltips);
     }
 
     var data = {
         x: xUpdate,
-        y: yUpdate
+        y: yUpdate,
+        text: tooltipsUpdate,
+        hovertext: tooltipsUpdate,
     };
 
     var layout = {
@@ -136,17 +140,23 @@ window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEnd
 
     // Reusing a div can create issues with chart lines appearing beyond the end range.
     // Workaround this issue by replacing the chart div. Ensures we start from a new state.
-    var chartDiv = document.createElement('div');
+    var chartDiv = document.createElement("div");
     chartContainerDiv.replaceChildren(chartDiv);
 
     var themeColors = getThemeColors();
 
     var data = [];
     for (var i = 0; i < traces.length; i++) {
+        var name = traces[i].name || "Value";
         var t = {
             x: xValues,
             y: traces[i].values,
-            name: traces[i].name || "Value"
+            name: name,
+            text: traces[i].tooltips,
+            hovertext: traces[i].tooltips,
+            hoverinfo: 'text',
+            line: { width: 0 },
+            stackgroup: "one"
         };
         data.push(t);
     }
@@ -167,12 +177,14 @@ window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEnd
             fixedrange: true,
             color: themeColors.textColor
         },
+        hovermode: "x",
         showlegend: true,
         legend: {
             orientation: "h",
             font: {
                 color: themeColors.textColor
-            }
+            },
+            traceorder: "normal"
         }
     };
 

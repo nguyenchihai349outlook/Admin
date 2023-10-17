@@ -20,32 +20,34 @@ public class OtlpInstrument
     public required OtlpMeter Parent { get; init; }
 
     public Dictionary<ReadOnlyMemory<KeyValuePair<string, string>>, DimensionScope> Dimensions { get; } = new(ScopeAttributesComparer.Instance);
-    public Dictionary<string, HashSet<string>> KnownAttributeValues { get; } = new();
+    public Dictionary<string, List<string>> KnownAttributeValues { get; } = new();
 
-    public void AddInstrumentValuesFromGrpc(Metric mData, ref KeyValuePair<string, string>[]? tempAttributes)
+    public void AddMetrics(Metric metric, ref KeyValuePair<string, string>[]? tempAttributes)
     {
-        switch (mData.DataCase)
+        switch (metric.DataCase)
         {
             case Metric.DataOneofCase.Gauge:
-                foreach (var d in mData.Gauge.DataPoints)
+                foreach (var d in metric.Gauge.DataPoints)
                 {
                     FindScope(d.Attributes, ref tempAttributes).AddPointValue(d);
                 }
                 break;
             case Metric.DataOneofCase.Sum:
-                foreach (var d in mData.Sum.DataPoints)
+                foreach (var d in metric.Sum.DataPoints)
                 {
                     FindScope(d.Attributes, ref tempAttributes).AddPointValue(d);
                 }
                 break;
             case Metric.DataOneofCase.Histogram:
-                foreach (var d in mData.Histogram.DataPoints)
+                foreach (var d in metric.Histogram.DataPoints)
                 {
                     FindScope(d.Attributes, ref tempAttributes).AddHistogramValue(d);
                 }
                 break;
         }
     }
+
+    public OtlpInstrumentKey GetKey() => new(Parent.MeterName, Name);
 
     private DimensionScope FindScope(RepeatedField<KeyValue> attributes, ref KeyValuePair<string, string>[]? tempAttributes)
     {
@@ -75,20 +77,28 @@ public class OtlpInstrument
         {
             if (!KnownAttributeValues.TryGetValue(key, out var values))
             {
-                KnownAttributeValues.Add(key, values = new HashSet<string>());
+                KnownAttributeValues.Add(key, values = new List<string>());
 
                 // If the key is new and there are already dimensions, add an empty value because there are dimensions without this key.
                 if (!isFirst)
                 {
-                    values.Add(string.Empty);
+                    TryAddValue(values, string.Empty);
                 }
             }
 
             var currentDimensionValue = OtlpHelpers.GetValue(durableAttributes, key);
-            values.Add(currentDimensionValue ?? string.Empty);
+            TryAddValue(values, currentDimensionValue ?? string.Empty);
         }
 
         return dimension;
+
+        static void TryAddValue(List<string> values, string value)
+        {
+            if (!values.Contains(value))
+            {
+                values.Add(value);
+            }
+        }
     }
 
     public static OtlpInstrument Clone(OtlpInstrument instrument, bool cloneData, DateTime valuesStart, DateTime valuesEnd)
@@ -106,7 +116,7 @@ public class OtlpInstrument
         {
             foreach (var item in instrument.KnownAttributeValues)
             {
-                newInstrument.KnownAttributeValues.Add(item.Key, item.Value.ToHashSet());
+                newInstrument.KnownAttributeValues.Add(item.Key, item.Value.ToList());
             }
             foreach (var item in instrument.Dimensions)
             {

@@ -1,3 +1,30 @@
 ﻿@namespace Aspire.Dashboard.Components
 
 <div id="@ChartDivId" style="width:650px; height:400px"></div>
+
+<div style="margin-top:50px;width:1100px;">
+    @foreach (var dimension in InstrumentViewModel.Instrument!.Dimensions.Values)
+    {
+        <div style="border: solid 1px black;">
+            <p><b>Dimension name:</b> @dimension.Name</p>
+            <p><b>Dimension values count:</b> @dimension.Values.Count()</p>
+            <table>
+                <tr>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Count</th>
+                    <th>Value</th>
+                </tr>
+                @foreach (var item in dimension.Values)
+                {
+                    <tr>
+                        <td>@item.Start</td>
+                        <td>@item.End</td>
+                        <td>@item.Count</td>
+                        <td>@item.ToString()</td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+</div>

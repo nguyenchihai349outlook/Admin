@@ -12,12 +12,12 @@ public class HistogramValue : MetricValueBase
     public double Sum { get; init; }
     public double[] ExplicitBounds { get; init; }
 
-    public HistogramValue(IList<ulong> values, double sum, ulong count, DateTime start, DateTime end, IList<double> explicitBounds) : base(start, end)
+    public HistogramValue(ulong[] values, double sum, ulong count, DateTime start, DateTime end, double[] explicitBounds) : base(start, end)
     {
-        Values = values.ToArray();
+        Values = values;
         Sum = sum;
         Count = count;
-        ExplicitBounds = explicitBounds.ToArray();
+        ExplicitBounds = explicitBounds;
     }
 
     public override string ToString()

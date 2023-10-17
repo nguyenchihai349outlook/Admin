@@ -22,7 +22,7 @@ public class OtlpApplication
 
     private readonly ReaderWriterLockSlim _metricsLock = new();
     private readonly Dictionary<string, OtlpMeter> _meters = new();
-    private readonly Dictionary<(string MeterName, string InstrumentName), OtlpInstrument> _instruments = new();
+    private readonly Dictionary<OtlpInstrumentKey, OtlpInstrument> _instruments = new();
 
     private readonly ILogger _logger;
 
@@ -103,7 +103,7 @@ public class OtlpApplication
 
                     try
                     {
-                        var instrumentKey = GetInstrumentKey(sm.Scope.Name, metric.Name);
+                        var instrumentKey = new OtlpInstrumentKey(sm.Scope.Name, metric.Name);
                         if (!_instruments.TryGetValue(instrumentKey, out var instrument))
                         {
                             _instruments.Add(instrumentKey, instrument = new OtlpInstrument
@@ -116,10 +116,7 @@ public class OtlpApplication
                             });
                         }
 
-                        lock (instrument)
-                        {
-                            instrument.AddInstrumentValuesFromGrpc(metric, ref tempAttributes);
-                        }
+                        instrument.AddMetrics(metric, ref tempAttributes);
                     }
                     catch (Exception ex)
                     {
@@ -133,11 +130,6 @@ public class OtlpApplication
         {
             _metricsLock.ExitWriteLock();
         }
-    }
-
-    private static (string, string) GetInstrumentKey(string meterName, string instrumentName)
-    {
-        return (instrumentName, meterName);
     }
 
     private static OtlpInstrumentType MapMetricType(Metric.DataOneofCase data)
@@ -166,7 +158,7 @@ public class OtlpApplication
 
         try
         {
-            if (!_instruments.TryGetValue(GetInstrumentKey(meterName, instrumentName), out var instrument))
+            if (!_instruments.TryGetValue(new OtlpInstrumentKey(meterName, instrumentName), out var instrument))
             {
                 return null;
             }
