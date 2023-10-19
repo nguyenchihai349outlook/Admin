@@ -101,9 +101,12 @@ window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime
     var yUpdate = [];
     var tooltipsUpdate = [];
     for (var i = 0; i < traces.length; i++) {
+        var trace = traces[i];
+
         xUpdate.push(xValues);
-        yUpdate.push(traces[i].values);
-        tooltipsUpdate.push(traces[i].tooltips);
+        yUpdate.push(trace.diffValues);
+        yUpdate.push(trace.values);
+        tooltipsUpdate.push(trace.tooltips);
     }
 
     var data = {
@@ -128,26 +131,50 @@ window.updateChart = function (id, traces, xValues, rangeStartTime, rangeEndTime
 window.initializeChart = function (id, traces, xValues, rangeStartTime, rangeEndTime) {
     var chartContainerDiv = document.getElementById(id);
 
+    var traceColors = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52'];
+
     // Reusing a div can create issues with chart lines appearing beyond the end range.
     // Workaround this issue by replacing the chart div. Ensures we start from a new state.
     var chartDiv = document.createElement("div");
     chartContainerDiv.replaceChildren(chartDiv);
 
     var themeColors = getThemeColors();
+    // If there is only one trace, add a line. Don't add a line when there are multiple traces
+    // because the top of the stack will be a line (e.g. a histogram will always show the P99 line)
+    var lineWidth = 0;//(traces.length == 1) ? 2 : 0;
 
     var data = [];
     for (var i = 0; i < traces.length; i++) {
-        var name = traces[i].name || "Value";
+        var trace = traces[i];
+        var name = trace.name || "Value";
         var t = {
             x: xValues,
-            y: traces[i].values,
+            y: trace.diffValues,
             name: name,
-            text: traces[i].tooltips,
+            text: trace.tooltips,
             hoverinfo: 'text',
-            line: { width: 0 },
-            stackgroup: "one"
+            line: {
+                width: lineWidth,
+                //color: traceColors[i % traceColors.length]
+            },
+            stackgroup: "one",
         };
         data.push(t);
+
+        var line = {
+            x: xValues,
+            y: trace.values,
+            name: name + '-line',
+            showlegend: false,
+            //hoverinfo: 'skip',
+            //type: "scatter",
+            //line: { width: lineWidth },
+            //stackgroup: "one",
+            line: {
+                //color: traceColors[i % traceColors.length]
+            }
+        };
+        data.push(line);
     }
 
     var layout = {

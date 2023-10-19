@@ -144,7 +144,7 @@ public partial class PlotlyChart : ComponentBase
             for (var i = 0; i < currentTrace.Values.Count; i++)
             {
                 double? diffValue = (previousValues != null)
-                    ? currentTrace.Values[i] - previousValues.Values[i] ?? 0
+                    ? currentTrace.Values[i] - previousValues.Values[i]
                     : currentTrace.Values[i];
 
                 if (diffValue > 0)
@@ -385,7 +385,8 @@ public partial class PlotlyChart : ComponentBase
         var traceDtos = traces.Select(y => new
         {
             name = y.Name,
-            values = y.DiffValues,
+            values = y.Values,
+            diffValues = y.DiffValues,
             tooltips = y.Tooltips
         }).ToArray();
 
