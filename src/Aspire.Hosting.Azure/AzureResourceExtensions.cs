@@ -164,4 +164,22 @@ public static class AzureResourceExtensions
     {
         writer.WriteString("type", "azure.redis.v1");
     }
+
+    /// <summary>
+    /// Adds an Azure App Configuration resource to the application model.
+    /// </summary>
+    /// <param name="builder">The <see cref="IDistributedApplicationBuilder"/>.</param>
+    /// <param name="name">The name of the resource. This name will be used as the connection string name when referenced in a dependency.</param>
+    /// <returns>A reference to the <see cref="IDistributedApplicationResourceBuilder{AzureAppConfigurationResource}"/>.</returns>
+    public static IDistributedApplicationResourceBuilder<AzureAppConfigurationResource> AddAzureAppConfig(this IDistributedApplicationBuilder builder, string name)
+    {
+        var resource = new AzureAppConfigurationResource(name);
+        return builder.AddResource(resource)
+            .WithAnnotation(new ManifestPublishingCallbackAnnotation(WriteAzureAppConfigToManifest));
+    }
+
+    private static void WriteAzureAppConfigToManifest(Utf8JsonWriter writer)
+    {
+        writer.WriteString("type", "azure.appconfig.v1");
+    }
 }
