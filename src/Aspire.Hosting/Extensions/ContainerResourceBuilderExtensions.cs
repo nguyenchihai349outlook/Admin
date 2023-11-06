@@ -48,7 +48,8 @@ public static class ContainerResourceBuilderExtensions
     /// <param name="scheme">The scheme e.g http/https/amqp</param>
     /// <param name="name">The name of the binding.</param>
     /// <returns>The <see cref="IResourceBuilder{T}"/>.</returns>
-    public static IResourceBuilder<T> WithServiceBinding<T>(this IResourceBuilder<T> builder, int containerPort, int? hostPort = null, string? scheme = null, string? name = null) where T : IResource
+    public static IResourceBuilder<T> WithServiceBinding<T>(this IResourceBuilder<T> builder, int containerPort, int? hostPort = null, string? scheme = null, string? name = null)
+        where T : ContainerResource
     {
         if (builder.Resource.Annotations.OfType<ServiceBindingAnnotation>().Any(sb => sb.Name == name))
         {

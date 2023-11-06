@@ -220,19 +220,19 @@ public static class ResourceBuilderExtensions
     /// </summary>
     /// <typeparam name="T">The resource type.</typeparam>
     /// <param name="builder">The resource builder.</param>
-    /// <param name="hostPort">The host port.</param>
+    /// <param name="port">The port.</param>
     /// <param name="scheme">The scheme e.g. (http/https)</param>
     /// <param name="name">The name of the binding.</param>
     /// <returns>The <see cref="IResourceBuilder{T}"/>.</returns>
     /// <exception cref="DistributedApplicationException">Throws an exception if the a binding with the same name already exists on the specified resource.</exception>
-    public static IResourceBuilder<T> WithServiceBinding<T>(this IResourceBuilder<T> builder, int? hostPort = null, string? scheme = null, string? name = null) where T : IResource
+    public static IResourceBuilder<T> WithServiceBinding<T>(this IResourceBuilder<T> builder, int? port = null, string? scheme = null, string? name = null) where T : IResource
     {
         if (builder.Resource.Annotations.OfType<ServiceBindingAnnotation>().Any(sb => sb.Name == name))
         {
             throw new DistributedApplicationException($"Service binding with name '{name}' already exists");
         }
 
-        var annotation = new ServiceBindingAnnotation(ProtocolType.Tcp, uriScheme: scheme, name: name, port: hostPort);
+        var annotation = new ServiceBindingAnnotation(ProtocolType.Tcp, uriScheme: scheme, name: name, port: port);
         return builder.WithAnnotation(annotation);
     }
 

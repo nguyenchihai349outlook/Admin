@@ -10,9 +10,9 @@ public abstract class ResourceViewModel
     public required NamespacedName NamespacedName { get; init; }
     public string? State { get; init; }
     public DateTime? CreationTimeStamp { get; init; }
-    public List<EnvironmentVariableViewModel> Environment { get; } = new();
+    public List<EnvironmentVariableViewModel> Environment { get; } = [];
     public required ILogSource LogSource { get; init; }
-    public List<string> Endpoints { get; } = new();
+    public HashSet<string> Endpoints { get; } = [];
     public int? ExpectedEndpointsCount { get; init; }
 }
 

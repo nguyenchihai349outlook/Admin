@@ -439,7 +439,8 @@ internal sealed partial class DashboardViewModelService : IDashboardViewModelSer
             var matchingService = services.SingleOrDefault(s => s.Metadata.Name == endpoint.Spec.ServiceName);
             if (matchingService?.UsesHttpProtocol(out var uriScheme) == true)
             {
-                var endpointString = $"{uriScheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
+                var endpointString = $"{uriScheme}://{matchingService.AllocatedAddress}:{matchingService.AllocatedPort}";
+                var instanceEndpointString = $"{uriScheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
 
                 // For project look into launch profile to append launch url
                 if (resourceViewModel is ProjectViewModel projectViewModel
@@ -448,9 +449,11 @@ internal sealed partial class DashboardViewModelService : IDashboardViewModelSer
                     && launchProfile.LaunchUrl is string launchUrl)
                 {
                     endpointString += $"/{launchUrl}";
+                    instanceEndpointString += $"/{launchUrl}";
                 }
 
                 resourceViewModel.Endpoints.Add(endpointString);
+                resourceViewModel.Endpoints.Add(instanceEndpointString);
             }
         }
     }

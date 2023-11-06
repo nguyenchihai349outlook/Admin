@@ -184,9 +184,9 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
 
         // We need to ensure that Services have unique names (otherwise we cannot really distinguish between
         // services produced by different resources).
-        List<string> serviceNames = new();
+        List<string> serviceNames = [];
 
-        void addServiceAppResource(Service svc, IResource producingResource, ServiceBindingAnnotation sba)
+        void AddServiceAppResource(Service svc, IResource producingResource, ServiceBindingAnnotation sba)
         {
             svc.Spec.Protocol = PortProtocol.FromProtocolType(sba.Protocol);
             svc.Spec.AddressAllocationMode = AddressAllocationModes.IPv4Loopback;
@@ -207,14 +207,10 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
                 var uniqueServiceName = GenerateUniqueServiceName(serviceNames, candidateServiceName);
                 var svc = Service.Create(uniqueServiceName);
 
-                if (replicas > 1)
-                {
-                    // Treat the port specified in the ServiceBindingAnnotation as desired port for the whole service.
-                    // Each replica receives its own port.
-                    svc.Spec.Port = sba.Port;
-                }
+                // Always set the service port
+                svc.Spec.Port = sba.Port;
 
-                addServiceAppResource(svc, sp.ModelResource, sba);
+                AddServiceAppResource(svc, sp.ModelResource, sba);
             }
         }
     }
@@ -279,7 +275,6 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
             exeSpec.WorkingDirectory = Path.GetDirectoryName(projectMetadata.ProjectPath);
 
             annotationHolder.Annotate(Executable.CSharpProjectPathAnnotation, projectMetadata.ProjectPath);
-            annotationHolder.Annotate(Executable.LaunchProfileNameAnnotation, project.SelectLaunchProfileName() ?? string.Empty);
 
             if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(DebugSessionPortVar)))
             {
@@ -388,6 +383,36 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
                     {
                         config.Add(envVar, "");
                     }
+
+                    if (er.ModelResource is ProjectResource)
+                    {
+                        // Assume ASP.NET Core?
+                        // Can't use the information in ASPNETCORE_URLS directly when multiple replicas are in play.
+                        // Instead we are going to SYNTHESIZE the new ASPNETCORE_URLS value based on the information about services produced by this resource.
+                        var urls = er.ServicesProduced.Select(sar =>
+                        {
+                            var url = sar.ServiceBindingAnnotation.UriScheme + "://localhost:{{- portForServing \"" + sar.Service.Metadata.Name + "\" -}}";
+                            return url;
+                        });
+
+                        config["ASPNETCORE_URLS"]= string.Join(";", urls);
+                    }
+                    else
+                    {
+                        if (er.ServicesProduced.Count == 1)
+                        {
+                            config.Add($"PORT", $"{{{{- portForServing \"{er.ServicesProduced[0].Service.Metadata.Name}\" }}}}");
+                        }
+                        else
+                        {
+                            foreach (var item in er.ServicesProduced)
+                            {
+                                var name = item.Service.Metadata.Name;
+                                config.Add($"{name.ToUpperInvariant()}_PORT", $"{{{{- portForServing \"{name}\" }}}}");
+                            }
+                        }
+                    }
+
                 }
 
                 if (er.ModelResource.TryGetEnvironmentVariables(out var envVarAnnotations))
@@ -420,30 +445,20 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
         config.Add("DOTNET_LAUNCH_PROFILE", launchProfileName);
 
         var launchProfile = launchSettings.Profiles[launchProfileName];
-        if (!string.IsNullOrWhiteSpace(launchProfile.ApplicationUrl))
-        {
-            int replicas = executableResource.ModelResource.GetReplicaCount();
 
-            if (replicas > 1)
-            {
-                // Can't use the information in ASPNETCORE_URLS directly when multiple replicas are in play.
-                // Instead we are going to SYNTHESIZE the new ASPNETCORE_URLS value based on the information about services produced by this resource.
-                var urls = executableResource.ServicesProduced.Select(sar =>
-                {
-                    var url = sar.ServiceBindingAnnotation.UriScheme + "://localhost:{{- portForServing \"" + sar.Service.Metadata.Name + "\" -}}";
-                    return url;
-                });
-                config.Add("ASPNETCORE_URLS", string.Join(";", urls));
-            }
-            else
-            {
-                config.Add("ASPNETCORE_URLS", launchProfile.ApplicationUrl);
-            }
-        }
+        // Can't use the information in ASPNETCORE_URLS directly when multiple replicas are in play.
+        // Instead we are going to SYNTHESIZE the new ASPNETCORE_URLS value based on the information about services produced by this resource.
+        var urls = executableResource.ServicesProduced.Select(sar =>
+        {
+            var url = sar.ServiceBindingAnnotation.UriScheme + "://localhost:{{- portForServing \"" + sar.Service.Metadata.Name + "\" -}}";
+            return url;
+        });
+
+        config.Add("ASPNETCORE_URLS", string.Join(";", urls));
 
         foreach (var envVar in launchProfile.EnvironmentVariables)
         {
-            string value = Environment.ExpandEnvironmentVariables(envVar.Value);
+            var value = Environment.ExpandEnvironmentVariables(envVar.Value);
             config[envVar.Key] = value;
         }
     }
@@ -466,11 +481,11 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
 
             if (container.TryGetVolumeMounts(out var volumeMounts))
             {
-                ctr.Spec.VolumeMounts = new();
+                ctr.Spec.VolumeMounts = [];
 
                 foreach (var mount in volumeMounts)
                 {
-                    bool isBound = mount.Type == ApplicationModel.VolumeMountType.Bind;
+                    var isBound = mount.Type == ApplicationModel.VolumeMountType.Bind;
                     var volumeSpec = new VolumeMount()
                     {
                         Source = isBound ? Path.GetFullPath(mount.Source) : mount.Source,
@@ -499,7 +514,7 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
                 var dcpContainerResource = (Container)cr.DcpResource;
                 var modelContainerResource = cr.ModelResource;
 
-                dcpContainerResource.Spec.Env = new();
+                dcpContainerResource.Spec.Env = [];
 
                 if (modelContainerResource.TryGetEnvironmentVariables(out var containerEnvironmentVariables))
                 {
@@ -519,13 +534,13 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
 
                 if (cr.ServicesProduced.Count > 0)
                 {
-                    dcpContainerResource.Spec.Ports = new();
+                    dcpContainerResource.Spec.Ports = [];
 
                     foreach (var sp in cr.ServicesProduced)
                     {
                         var portSpec = new ContainerPortSpec()
                         {
-                            ContainerPort = sp.DcpServiceProducerAnnotation.Port,
+                            ContainerPort = sp.ServiceBindingAnnotation.ContainerPort,
                         };
 
                         if (!string.IsNullOrEmpty(sp.DcpServiceProducerAnnotation.Address))
@@ -580,23 +595,23 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
 
                 sp.DcpServiceProducerAnnotation.Port = sp.ServiceBindingAnnotation.ContainerPort;
             }
-            else if (modelResource is ExecutableResource)
-            {
-                sp.DcpServiceProducerAnnotation.Port = sp.ServiceBindingAnnotation.Port;
-            }
-            else
-            {
-                if (sp.ServiceBindingAnnotation.Port is null)
-                {
-                    throw new InvalidOperationException($"The ServiceBindingAnnotation for resource {modelResourceName} must specify the Port");
-                }
+            //else if (modelResource is ExecutableResource)
+            //{
+            //    // sp.DcpServiceProducerAnnotation.Port = sp.ServiceBindingAnnotation.Port;
+            //}
+            //else
+            //{
+            //    if (sp.ServiceBindingAnnotation.Port is null)
+            //    {
+            //        throw new InvalidOperationException($"The ServiceBindingAnnotation for resource {modelResourceName} must specify the Port");
+            //    }
 
-                if (modelResource.GetReplicaCount() == 1)
-                {
-                    // If multiple replicas are used, each replica will get its own port.
-                    sp.DcpServiceProducerAnnotation.Port = sp.ServiceBindingAnnotation.Port;
-                }
-            }
+            //    //if (modelResource.GetReplicaCount() == 1)
+            //    //{
+            //    //    // If multiple replicas are used, each replica will get its own port.
+            //    //    sp.DcpServiceProducerAnnotation.Port = sp.ServiceBindingAnnotation.Port;
+            //    //}
+            //}
 
             dcpResource.AnnotateAsObjectList(CustomResource.ServiceProducerAnnotation, sp.DcpServiceProducerAnnotation);
             appResource.ServicesProduced.Add(sp);

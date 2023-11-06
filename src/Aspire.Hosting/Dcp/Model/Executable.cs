@@ -110,7 +110,6 @@ internal static class ExecutableStates
 internal sealed class Executable : CustomResource<ExecutableSpec, ExecutableStatus>
 {
     public const string CSharpProjectPathAnnotation = "csharp-project-path";
-    public const string LaunchProfileNameAnnotation = "launch-profile-name";
 
     [JsonConstructor]
     public Executable(ExecutableSpec spec) : base(spec) { }
