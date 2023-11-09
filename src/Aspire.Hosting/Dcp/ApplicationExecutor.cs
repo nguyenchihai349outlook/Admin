@@ -387,28 +387,29 @@ internal sealed class ApplicationExecutor(DistributedApplicationModel model, Kub
                     if (er.ModelResource is ProjectResource)
                     {
                         // Assume ASP.NET Core?
-                        // Can't use the information in ASPNETCORE_URLS directly when multiple replicas are in play.
-                        // Instead we are going to SYNTHESIZE the new ASPNETCORE_URLS value based on the information about services produced by this resource.
-                        var urls = er.ServicesProduced.Select(sar =>
+                        // We're going to use http and https urls as ASPNETCORE_URLS
+                        var urls = er.ServicesProduced.Where(s => s.ServiceBindingAnnotation.UriScheme is "http" or "https").Select(sar =>
                         {
                             var url = sar.ServiceBindingAnnotation.UriScheme + "://localhost:{{- portForServing \"" + sar.Service.Metadata.Name + "\" -}}";
                             return url;
                         });
 
-                        config["ASPNETCORE_URLS"]= string.Join(";", urls);
+                        config["ASPNETCORE_URLS"] = string.Join(";", urls);
                     }
                     else
                     {
                         if (er.ServicesProduced.Count == 1)
                         {
-                            config.Add($"PORT", $"{{{{- portForServing \"{er.ServicesProduced[0].Service.Metadata.Name}\" }}}}");
+                            var envVar = er.ServicesProduced[0].ServiceBindingAnnotation.PortEnvVar ?? "PORT";
+                            config.Add(envVar, $"{{{{- portForServing \"{er.ServicesProduced[0].Service.Metadata.Name}\" }}}}");
                         }
                         else
                         {
                             foreach (var item in er.ServicesProduced)
                             {
                                 var name = item.Service.Metadata.Name;
-                                config.Add($"{name.ToUpperInvariant()}_PORT", $"{{{{- portForServing \"{name}\" }}}}");
+                                var envVar = item.ServiceBindingAnnotation.PortEnvVar ?? $"{name.ToUpperInvariant()}_PORT";
+                                config.Add(envVar, $"{{{{- portForServing \"{name}\" }}}}");
                             }
                         }
                     }

@@ -223,9 +223,10 @@ public static class ResourceBuilderExtensions
     /// <param name="port">The port.</param>
     /// <param name="scheme">The scheme e.g. (http/https)</param>
     /// <param name="name">The name of the binding.</param>
+    /// <param name="portEnvVar">The name of the environment variable to inject. This will be default to PORT or {name}_PORT if not specified.</param>
     /// <returns>The <see cref="IResourceBuilder{T}"/>.</returns>
     /// <exception cref="DistributedApplicationException">Throws an exception if the a binding with the same name already exists on the specified resource.</exception>
-    public static IResourceBuilder<T> WithServiceBinding<T>(this IResourceBuilder<T> builder, int? port = null, string? scheme = null, string? name = null) where T : IResource
+    public static IResourceBuilder<T> WithServiceBinding<T>(this IResourceBuilder<T> builder, int? port = null, string? scheme = null, string? name = null, string? portEnvVar = null) where T : IResource
     {
         if (builder.Resource.Annotations.OfType<ServiceBindingAnnotation>().Any(sb => sb.Name == name))
         {
@@ -237,7 +238,7 @@ public static class ResourceBuilderExtensions
     }
 
     /// <summary>
-    /// Gets an <see cref="EndpointReference"/> by name from the resource. These endpoints are declared either using <see cref="WithServiceBinding{T}(IResourceBuilder{T}, int?, string?, string?)"/> or by launch settings (for project resources).
+    /// Gets an <see cref="EndpointReference"/> by name from the resource. These endpoints are declared either using <see cref="WithServiceBinding{T}(IResourceBuilder{T}, int?, string?, string?, string?)"/> or by launch settings (for project resources).
     /// The <see cref="EndpointReference"/> can be used to resolve the address of the endpoint in <see cref="WithEnvironment{T}(IResourceBuilder{T}, Action{EnvironmentCallbackContext})"/>.
     /// </summary>
     /// <typeparam name="T">The resource type.</typeparam>
