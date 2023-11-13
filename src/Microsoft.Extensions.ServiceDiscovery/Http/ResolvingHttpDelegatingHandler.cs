@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Net;
-using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.ServiceDiscovery.Abstractions;
 
 namespace Microsoft.Extensions.ServiceDiscovery.Http;
@@ -13,24 +12,29 @@ namespace Microsoft.Extensions.ServiceDiscovery.Http;
 public class ResolvingHttpDelegatingHandler : DelegatingHandler
 {
     private readonly HttpServiceEndPointResolver _resolver;
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>
     /// Initializes a new <see cref="ResolvingHttpDelegatingHandler"/> instance.
     /// </summary>
     /// <param name="resolver">The endpoint resolver.</param>
-    public ResolvingHttpDelegatingHandler(HttpServiceEndPointResolver resolver)
+    /// <param name="timeProvider">The time provider.</param>
+    public ResolvingHttpDelegatingHandler(HttpServiceEndPointResolver resolver, TimeProvider timeProvider)
     {
         _resolver = resolver;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
     /// Initializes a new <see cref="ResolvingHttpDelegatingHandler"/> instance.
     /// </summary>
     /// <param name="resolver">The endpoint resolver.</param>
+    /// <param name="timeProvider">The time provider.</param>
     /// <param name="innerHandler">The inner handler.</param>
-    public ResolvingHttpDelegatingHandler(HttpServiceEndPointResolver resolver, HttpMessageHandler innerHandler) : base(innerHandler)
+    public ResolvingHttpDelegatingHandler(HttpServiceEndPointResolver resolver, TimeProvider timeProvider, HttpMessageHandler innerHandler) : base(innerHandler)
     {
         _resolver = resolver;
+        _timeProvider = timeProvider;
     }
 
     /// <inheritdoc/>
@@ -39,7 +43,7 @@ public class ResolvingHttpDelegatingHandler : DelegatingHandler
         var originalUri = request.RequestUri;
         IEndPointHealthFeature? epHealth = null;
         Exception? error = null;
-        var responseDuration = ValueStopwatch.StartNew();
+        var startTimestamp = _timeProvider.GetTimestamp();
         if (originalUri?.Host is not null)
         {
             var result = await _resolver.GetEndpointAsync(request, cancellationToken).ConfigureAwait(false);
@@ -59,7 +63,8 @@ public class ResolvingHttpDelegatingHandler : DelegatingHandler
         }
         finally
         {
-            epHealth?.ReportHealth(responseDuration.GetElapsedTime(), error); // Report health so that the resolver pipeline can take health and performance into consideration, possibly triggering a circuit breaker?.
+            var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
+            epHealth?.ReportHealth(elapsed, error); // Report health so that the resolver pipeline can take health and performance into consideration, possibly triggering a circuit breaker?.
             request.RequestUri = originalUri;
         }
     }

@@ -17,4 +17,9 @@
     <ProjectReference Include="..\Microsoft.Extensions.ServiceDiscovery.Abstractions\Microsoft.Extensions.ServiceDiscovery.Abstractions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsoft.Extensions.ServiceDiscovery.Tests" />
+    <InternalsVisibleTo Include="Microsoft.Extensions.ServiceDiscovery.Dns.Tests" />
+  </ItemGroup>
+
 </Project>

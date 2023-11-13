@@ -13,7 +13,7 @@ namespace Microsoft.Extensions.ServiceDiscovery.Tests;
 
 /// <summary>
 /// Tests for <see cref="ConfigurationServiceEndPointResolver"/> and <see cref="ConfigurationServiceEndPointResolverProvider"/>.
-/// These also cover <see cref="ServiceEndPointResolver"/> and <see cref="ServiceEndPointResolverFactory"/> by extension.
+/// These also cover <see cref="CompositeServiceEndPointResolver"/> and <see cref="ServiceEndPointResolverFactory"/> by extension.
 /// </summary>
 public class ConfigurationServiceEndPointResolverTests
 {
@@ -30,7 +30,7 @@ public class ConfigurationServiceEndPointResolverTests
             .AddConfigurationServiceEndPointResolver()
             .BuildServiceProvider();
         var resolverFactory = services.GetRequiredService<ServiceEndPointResolverFactory>();
-        ServiceEndPointResolver resolver;
+        CompositeServiceEndPointResolver resolver;
         await using ((resolver = resolverFactory.CreateResolver("http://basket")).ConfigureAwait(false))
         {
             Assert.NotNull(resolver);
@@ -70,7 +70,7 @@ public class ConfigurationServiceEndPointResolverTests
             .AddConfigurationServiceEndPointResolver(options => options.ApplyHostNameMetadata = _ => true)
             .BuildServiceProvider();
         var resolverFactory = services.GetRequiredService<ServiceEndPointResolverFactory>();
-        ServiceEndPointResolver resolver;
+        CompositeServiceEndPointResolver resolver;
         await using ((resolver = resolverFactory.CreateResolver("http://basket")).ConfigureAwait(false))
         {
             Assert.NotNull(resolver);
@@ -95,7 +95,7 @@ public class ConfigurationServiceEndPointResolverTests
     }
 
     [Fact]
-    public async Task ResolveServiceEndPoint_Configuration_MultipleProtocols()
+    public async Task ResolveServiceEndPoint_Configuration_MultipleProtocols_Flat()
     {
         var configSource = new MemoryConfigurationSource
         {
@@ -114,7 +114,50 @@ public class ConfigurationServiceEndPointResolverTests
             .AddConfigurationServiceEndPointResolver()
             .BuildServiceProvider();
         var resolverFactory = services.GetRequiredService<ServiceEndPointResolverFactory>();
-        ServiceEndPointResolver resolver;
+        CompositeServiceEndPointResolver resolver;
+        await using ((resolver = resolverFactory.CreateResolver("http://_grpc.basket")).ConfigureAwait(false))
+        {
+            Assert.NotNull(resolver);
+            var tcs = new TaskCompletionSource<ServiceEndPointResolverResult>();
+            resolver.OnEndPointsUpdated = tcs.SetResult;
+            resolver.Start();
+            var initialResult = await tcs.Task.ConfigureAwait(false);
+            Assert.NotNull(initialResult);
+            Assert.True(initialResult.ResolvedSuccessfully);
+            Assert.Equal(ResolutionStatus.Success, initialResult.Status);
+            Assert.Equal(2, initialResult.EndPoints.Count);
+            Assert.Equal(new DnsEndPoint("localhost", 2222), initialResult.EndPoints[0].EndPoint);
+            Assert.Equal(new DnsEndPoint("remotehost", 2222), initialResult.EndPoints[1].EndPoint);
+
+            Assert.All(initialResult.EndPoints, ep =>
+            {
+                var hostNameFeature = ep.Features.Get<IHostNameFeature>();
+                Assert.Null(hostNameFeature);
+            });
+        }
+    }
+
+    [Fact]
+    public async Task ResolveServiceEndPoint_Configuration_MultipleProtocols_Nested()
+    {
+        var configSource = new MemoryConfigurationSource
+        {
+            InitialData = new Dictionary<string, string?>
+            {
+                ["services:basket:0"] = "localhost:8080",
+                ["services:basket:1"] = "remotehost:9090",
+                ["services:basket:grpc:0"] = "localhost:2222",
+                ["services:basket:grpc:1"] = "remotehost:2222",
+            }
+        };
+        var config = new ConfigurationBuilder().Add(configSource);
+        var services = new ServiceCollection()
+            .AddSingleton<IConfiguration>(config.Build())
+            .AddServiceDiscoveryCore()
+            .AddConfigurationServiceEndPointResolver()
+            .BuildServiceProvider();
+        var resolverFactory = services.GetRequiredService<ServiceEndPointResolverFactory>();
+        CompositeServiceEndPointResolver resolver;
         await using ((resolver = resolverFactory.CreateResolver("http://_grpc.basket")).ConfigureAwait(false))
         {
             Assert.NotNull(resolver);

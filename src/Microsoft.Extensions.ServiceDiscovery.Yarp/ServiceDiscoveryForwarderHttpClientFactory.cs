@@ -15,6 +15,6 @@ internal sealed class ServiceDiscoveryForwarderHttpClientFactory(
     protected override HttpMessageHandler WrapHandler(ForwarderHttpClientContext context, HttpMessageHandler handler)
     {
         var registry = new HttpServiceEndPointResolver(factory, selectorProvider, timeProvider);
-        return new ResolvingHttpDelegatingHandler(registry, handler);
+        return new ResolvingHttpDelegatingHandler(registry, timeProvider, handler);
     }
 }
