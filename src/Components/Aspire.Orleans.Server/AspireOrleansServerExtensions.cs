@@ -28,7 +28,15 @@ public static class AspireOrleansServerExtensions
 
             if (serverSettings.Clustering is { } clusteringSettings)
             {
-                ApplyClusteringSettings(builder, clusteringSettings);
+                ApplyClusteringSettings(builder, siloBuilder, clusteringSettings);
+            }
+
+            if (serverSettings.GrainStorage is { Count: > 0 } grainStorage)
+            {
+                foreach (var (name, configuration) in grainStorage)
+                {
+                    ApplyGrainStorageSettings(builder, siloBuilder, name, configuration);
+                }
             }
 
             builder.AddAzureBlobService("grainstorage");
@@ -62,10 +70,60 @@ public static class AspireOrleansServerExtensions
         return builder;
     }
 
-    private static void ApplyClusteringSettings(IHostApplicationBuilder builder, ISiloBuilder siloBuilder, ConnectionSettings clusteringSettings)
+    private static void ApplyGrainStorageSettings(IHostApplicationBuilder builder, ISiloBuilder siloBuilder, string name, IConfigurationSection configuration)
     {
-        var type = clusteringSettings.ConnectionType;
-        var connectionName = clusteringSettings.ConnectionName;
+        var connectionSettings = new ConnectionSettings();
+        configuration.Bind(connectionSettings);
+
+        var type = connectionSettings.ConnectionType;
+        var connectionName = connectionSettings.ConnectionName;
+
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            throw new ArgumentException(message: $"A \"ConnectionType\" value must be specified for \"GrainStorage\" named '{name}'.", innerException: null);
+        }
+
+        if (string.IsNullOrWhiteSpace(connectionName))
+        {
+            throw new ArgumentException(message: $"A \"ConnectionName\" value must be specified for \"GrainStorage\" named '{name}'.", innerException: null);
+        }
+
+        if (string.Equals(InternalProviderType, type, StringComparison.OrdinalIgnoreCase))
+        {
+            siloBuilder.UseLocalhostClustering();
+            var connectionString = builder.Configuration.GetConnectionString(connectionName);
+
+            if (connectionString is null || !IPEndPoint.TryParse(connectionString, out var primarySiloEndPoint))
+            {
+                throw new InvalidOperationException($"Invalid connection string specified for '{connectionName}'.");
+            }
+        }
+        else if (string.Equals(AzureTablesProviderType, type, StringComparison.OrdinalIgnoreCase))
+        {
+            // Configure a table service client in the dependency injection container.
+            builder.AddKeyedAzureTableService(connectionName);
+
+            // Configure Orleans to use the configured table service client.
+            siloBuilder.UseAzureStorageClustering(optionsBuilder => optionsBuilder.Configure(
+                (AzureStorageClusteringOptions options, IServiceProvider serviceProvider) =>
+                {
+                    var tableServiceClient = Task.FromResult(serviceProvider.GetRequiredKeyedService<TableServiceClient>(connectionName));
+                    options.ConfigureTableServiceClient(() => tableServiceClient);
+                }));
+        }
+        else
+        {
+            throw new NotSupportedException($"Unsupported connection type \"{type}\".");
+        }
+    }
+
+    private static void ApplyClusteringSettings(IHostApplicationBuilder builder, ISiloBuilder siloBuilder, IConfigurationSection configuration)
+    {
+        var connectionSettings = new ConnectionSettings();
+        configuration.Bind(connectionSettings);
+
+        var type = connectionSettings.ConnectionType;
+        var connectionName = connectionSettings.ConnectionName;
 
         if (string.IsNullOrWhiteSpace(type))
         {
