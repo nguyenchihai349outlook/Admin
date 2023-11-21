@@ -23,11 +23,11 @@ public static class IDistributedApplicationBuilderExtensions
         return builder;
     }
 
-    public static IResourceBuilder<OrleansResource> UseAzureBlobGrainStorage (
+    public static IResourceBuilder<OrleansResource> UseAzureBlobGrainStorage(
         this IResourceBuilder<OrleansResource> builder,
         IResourceBuilder<AzureBlobStorageResource> grainStorage)
     {
-        builder.Resource.GrainStorage = grainStorage;
+        builder.Resource.GrainStorage[grainStorage.Resource.Name] = grainStorage;
         return builder;
     }
 
@@ -36,9 +36,17 @@ public static class IDistributedApplicationBuilderExtensions
         IResourceBuilder<OrleansResource> orleansResourceBuilder)
         where T : IResourceWithEnvironment
     {
+        foreach (var (name, storage) in orleansResourceBuilder.Resource.GrainStorage)
+        {
+            builder.WithReference(storage, connectionName: $"orleans_{orleansResourceBuilder.Resource.Name}_grain_persistence_{name}");
+        }
+
+        if (orleansResourceBuilder.Resource.Reminders is { } reminders)
+        {
+            builder.WithReference(reminders);
+        }
         return builder
-            .WithReference(orleansResourceBuilder.Resource.ClusteringTable!)
-            .WithReference(orleansResourceBuilder.Resource.GrainStorage!);
+            .WithReference(orleansResourceBuilder.Resource.ClusteringTable!);
     }
 
     public static IResourceBuilder<T> WithOrleansClient<T>(

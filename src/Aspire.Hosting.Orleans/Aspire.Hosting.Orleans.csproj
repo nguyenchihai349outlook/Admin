@@ -11,4 +11,10 @@
     <ProjectReference Include="..\Aspire.Hosting.Azure\Aspire.Hosting.Azure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Components\Aspire.Orleans.Server\Shared\**\*.*">
+      <Link>Shared\%(RecursiveDir)%(FileName)%(Extension)</Link>
+    </Compile>
+  </ItemGroup>
+
 </Project>
