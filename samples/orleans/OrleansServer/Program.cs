@@ -3,10 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.AddServiceDefaults();
 builder.UseOrleansAspire();
 
 using var host = builder.Build();
-
 await host.StartAsync();
 
 var client = host.Services.GetRequiredService<IClusterClient>();
