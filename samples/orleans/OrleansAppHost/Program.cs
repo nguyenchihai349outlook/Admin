@@ -8,7 +8,7 @@ var grainStorage = storage.AddBlobs("grainstate");
 
 var orleans = builder.AddOrleans("my-app")
                      .WithClustering(clusteringTable)
-                     .WithGrainStorage("default", grainStorage);
+                     .WithGrainStorage("Default", grainStorage);
 
 builder.AddProject<Projects.OrleansServer>("silo")
        .WithOrleansServer(orleans)
@@ -17,3 +17,4 @@ builder.AddProject<Projects.OrleansServer>("silo")
 using var app = builder.Build();
 
 await app.RunAsync();
+
