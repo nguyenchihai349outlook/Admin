@@ -1,7 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
@@ -11,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Orleans.Clustering.AzureStorage;
 using Orleans.Configuration;
+using Orleans.Reminders.AzureStorage;
 using Orleans.TestingHost.UnixSocketTransport;
 using static Aspire.Orleans.Server.OrleansServerSettingConstants;
 
@@ -22,24 +22,26 @@ public static class AspireOrleansServerExtensions
     {
         builder.Services.AddOrleans(siloBuilder =>
         {
-            builder.AddAzureTableService("clustering");
             var serverSettings = new OrleansServerSettings();
-            builder.Configuration.GetSection("grains").Bind(serverSettings);
+            builder.Configuration.GetSection("Grains").Bind(serverSettings);
 
-            if (serverSettings.Clustering is { } clusteringSettings)
+            if (serverSettings.Clustering is { } clusteringSection)
             {
-                ApplyClusteringSettings(builder, siloBuilder, clusteringSettings);
+                ApplyClusteringSettings(builder, siloBuilder, clusteringSection);
             }
 
-            if (serverSettings.GrainStorage is { Count: > 0 } grainStorage)
+            if (serverSettings.GrainStorage is { Count: > 0 } grainStorageSection)
             {
-                foreach (var (name, configuration) in grainStorage)
+                foreach (var (name, configuration) in grainStorageSection)
                 {
                     ApplyGrainStorageSettings(builder, siloBuilder, name, configuration);
                 }
             }
 
-            builder.AddAzureBlobService("grainstorage");
+            if (serverSettings.Reminders is { } remindersSection)
+            {
+                ApplyRemindersSettings(builder, siloBuilder, remindersSection);
+            }
 
             // Enable distributed tracing for open telemetry.
             siloBuilder.AddActivityPropagation();
@@ -88,27 +90,34 @@ public static class AspireOrleansServerExtensions
             throw new ArgumentException(message: $"A \"ConnectionName\" value must be specified for \"GrainStorage\" named '{name}'.", innerException: null);
         }
 
-        if (string.Equals(InternalProviderType, type, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(InternalType, type, StringComparison.OrdinalIgnoreCase))
         {
-            siloBuilder.UseLocalhostClustering();
-            var connectionString = builder.Configuration.GetConnectionString(connectionName);
-
-            if (connectionString is null || !IPEndPoint.TryParse(connectionString, out var primarySiloEndPoint))
-            {
-                throw new InvalidOperationException($"Invalid connection string specified for '{connectionName}'.");
-            }
+            siloBuilder.AddMemoryGrainStorage(name);
         }
-        else if (string.Equals(AzureTablesProviderType, type, StringComparison.OrdinalIgnoreCase))
+        else if (string.Equals(AzureTablesType, type, StringComparison.OrdinalIgnoreCase))
         {
             // Configure a table service client in the dependency injection container.
             builder.AddKeyedAzureTableService(connectionName);
 
             // Configure Orleans to use the configured table service client.
-            siloBuilder.UseAzureStorageClustering(optionsBuilder => optionsBuilder.Configure(
-                (AzureStorageClusteringOptions options, IServiceProvider serviceProvider) =>
+            siloBuilder.AddAzureTableGrainStorage(name, optionsBuilder => optionsBuilder.Configure(
+                (AzureTableStorageOptions options, IServiceProvider serviceProvider) =>
                 {
                     var tableServiceClient = Task.FromResult(serviceProvider.GetRequiredKeyedService<TableServiceClient>(connectionName));
                     options.ConfigureTableServiceClient(() => tableServiceClient);
+                }));
+        }
+        else if (string.Equals(AzureBlobsType, type, StringComparison.OrdinalIgnoreCase))
+        {
+            // Configure a blob service client in the dependency injection container.
+            builder.AddKeyedAzureBlobService(connectionName);
+
+            // Configure Orleans to use the configured table service client.
+            siloBuilder.AddAzureBlobGrainStorage(name, optionsBuilder => optionsBuilder.Configure(
+                (AzureBlobStorageOptions options, IServiceProvider serviceProvider) =>
+                {
+                    var tableServiceClient = Task.FromResult(serviceProvider.GetRequiredKeyedService<BlobServiceClient>(connectionName));
+                    options.ConfigureBlobServiceClient(() => tableServiceClient);
                 }));
         }
         else
@@ -135,7 +144,7 @@ public static class AspireOrleansServerExtensions
             throw new ArgumentException(message: "A value must be specified for \"Clustering.ConnectionName\".", innerException: null);
         }
 
-        if (string.Equals(InternalProviderType, type, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(InternalType, type, StringComparison.OrdinalIgnoreCase))
         {
             siloBuilder.UseLocalhostClustering();
             var connectionString = builder.Configuration.GetConnectionString(connectionName);
@@ -145,7 +154,7 @@ public static class AspireOrleansServerExtensions
                 throw new InvalidOperationException($"Invalid connection string specified for '{connectionName}'.");
             }
         }
-        else if (string.Equals(AzureTablesProviderType, type, StringComparison.OrdinalIgnoreCase))
+        else if (string.Equals(AzureTablesType, type, StringComparison.OrdinalIgnoreCase))
         {
             // Configure a table service client in the dependency injection container.
             builder.AddKeyedAzureTableService(connectionName);
@@ -153,6 +162,54 @@ public static class AspireOrleansServerExtensions
             // Configure Orleans to use the configured table service client.
             siloBuilder.UseAzureStorageClustering(optionsBuilder => optionsBuilder.Configure(
                 (AzureStorageClusteringOptions options, IServiceProvider serviceProvider) =>
+                {
+                    var tableServiceClient = Task.FromResult(serviceProvider.GetRequiredKeyedService<TableServiceClient>(connectionName));
+                    options.ConfigureTableServiceClient(() => tableServiceClient);
+                }));
+        }
+        else
+        {
+            throw new NotSupportedException($"Unsupported connection type \"{type}\".");
+        }
+    }
+
+    private static void ApplyRemindersSettings(IHostApplicationBuilder builder, ISiloBuilder siloBuilder, IConfigurationSection configuration)
+    {
+        var connectionSettings = new ConnectionSettings();
+        configuration.Bind(connectionSettings);
+
+        siloBuilder.AddReminders();
+        var type = connectionSettings.ConnectionType;
+        var connectionName = connectionSettings.ConnectionName;
+
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            throw new ArgumentException(message: "A value must be specified for \"Reminders.ConnectionType\".", innerException: null);
+        }
+
+        if (string.IsNullOrWhiteSpace(connectionName))
+        {
+            throw new ArgumentException(message: "A value must be specified for \"Reminders.ConnectionName\".", innerException: null);
+        }
+
+        if (string.Equals(InternalType, type, StringComparison.OrdinalIgnoreCase))
+        {
+            siloBuilder.UseInMemoryReminderService();
+            var connectionString = builder.Configuration.GetConnectionString(connectionName);
+
+            if (connectionString is null || !IPEndPoint.TryParse(connectionString, out var primarySiloEndPoint))
+            {
+                throw new InvalidOperationException($"Invalid connection string specified for '{connectionName}'.");
+            }
+        }
+        else if (string.Equals(AzureTablesType, type, StringComparison.OrdinalIgnoreCase))
+        {
+            // Configure a table service client in the dependency injection container.
+            builder.AddKeyedAzureTableService(connectionName);
+
+            // Configure Orleans to use the configured table service client.
+            siloBuilder.UseAzureTableReminderService(optionsBuilder => optionsBuilder.Configure(
+                (AzureTableReminderStorageOptions options, IServiceProvider serviceProvider) =>
                 {
                     var tableServiceClient = Task.FromResult(serviceProvider.GetRequiredKeyedService<TableServiceClient>(connectionName));
                     options.ConfigureTableServiceClient(() => tableServiceClient);
