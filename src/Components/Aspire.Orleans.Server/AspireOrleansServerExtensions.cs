@@ -7,7 +7,6 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using Orleans.Clustering.AzureStorage;
 using Orleans.Configuration;
 using Orleans.Reminders.AzureStorage;
@@ -18,14 +17,28 @@ namespace Aspire.Orleans.Server;
 
 public static class AspireOrleansServerExtensions
 {
+    private const string OrleansConfigKeyPrefix = "Orleans";
+
     public static IHostApplicationBuilder UseOrleansAspire(this IHostApplicationBuilder builder)
     {
         builder.Services.AddOrleans(siloBuilder =>
         {
             var serverSettings = new OrleansServerSettings();
-            builder.Configuration.GetSection("Grains").Bind(serverSettings);
+            builder.Configuration.GetSection(OrleansConfigKeyPrefix).Bind(serverSettings);
 
-            if (serverSettings.Clustering is { } clusteringSection)
+            siloBuilder.Configure<ClusterOptions>(o =>
+            {
+                if (!string.IsNullOrWhiteSpace(serverSettings.ServiceId))
+                {
+                    o.ServiceId = serverSettings.ServiceId;
+                }
+                if (!string.IsNullOrWhiteSpace(serverSettings.ClusterId))
+                {
+                    o.ClusterId = serverSettings.ClusterId;
+                }
+            });
+
+            if (serverSettings.Clustering is { } clusteringSection && clusteringSection.Exists())
             {
                 ApplyClusteringSettings(builder, siloBuilder, clusteringSection);
             }
@@ -38,7 +51,7 @@ public static class AspireOrleansServerExtensions
                 }
             }
 
-            if (serverSettings.Reminders is { } remindersSection)
+            if (serverSettings.Reminders is { } remindersSection && remindersSection.Exists())
             {
                 ApplyRemindersSettings(builder, siloBuilder, remindersSection);
             }
@@ -46,6 +59,7 @@ public static class AspireOrleansServerExtensions
             // Enable distributed tracing for open telemetry.
             siloBuilder.AddActivityPropagation();
 
+            /*
             siloBuilder.UseAzureStorageClustering((OptionsBuilder<AzureStorageClusteringOptions> optionsBuilder) =>
             {
                 optionsBuilder.Configure<TableServiceClient>(
@@ -57,6 +71,7 @@ public static class AspireOrleansServerExtensions
                 optionsBuilder.Configure<BlobServiceClient>(
                     (options, blobClient) => options.ConfigureBlobServiceClient(() => Task.FromResult(blobClient)));
             });
+            */
 
             // BEGIN: will work only locally for now
             siloBuilder.Configure<EndpointOptions>(options =>

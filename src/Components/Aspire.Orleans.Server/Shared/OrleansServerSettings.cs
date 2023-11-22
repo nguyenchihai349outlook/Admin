@@ -7,6 +7,10 @@ namespace Aspire.Orleans.Server;
 
 internal sealed class OrleansServerSettings
 {
+    public string? ServiceId { get; set; }
+
+    public string? ClusterId { get; set; }
+
     /// <summary>
     /// Gets the cluster membership settings.
     /// </summary>

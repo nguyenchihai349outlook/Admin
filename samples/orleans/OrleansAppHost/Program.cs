@@ -4,11 +4,11 @@ builder.AddAzureProvisioning();
 
 var storage = builder.AddAzureStorage("storage");
 var clusteringTable = storage.AddTables("clustering");
-var grainStorage = storage.AddBlobs("grainStorage");
+var grainStorage = storage.AddBlobs("grainstate");
 
 var orleans = builder.AddOrleans("my-app")
-                     .UseAzureClustering(clusteringTable)
-                     .UseAzureBlobGrainStorage(grainStorage);
+                     .WithClustering(clusteringTable)
+                     .WithGrainStorage("default", grainStorage);
 
 builder.AddProject<Projects.OrleansServer>("silo")
        .WithOrleansServer(orleans)

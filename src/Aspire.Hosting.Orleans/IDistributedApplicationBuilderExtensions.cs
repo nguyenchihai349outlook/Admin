@@ -11,12 +11,28 @@ namespace Aspire.Hosting;
 /// </summary>
 public static class IDistributedApplicationBuilderExtensions
 {
-    private const string OrleansConfigKeyEnvVarPrefix = "Grains";
+    private const string OrleansConfigKeyPrefix = "Orleans";
 
     public static IResourceBuilder<OrleansResource> AddOrleans(
         this IDistributedApplicationBuilder builder,
         string name)
         => builder.AddResource(new OrleansResource(name));
+
+    public static IResourceBuilder<OrleansResource> WithClusterId(
+        this IResourceBuilder<OrleansResource> builder,
+        string clusterId)
+    {
+        builder.Resource.ClusterId = clusterId;
+        return builder;
+    }
+
+    public static IResourceBuilder<OrleansResource> WithServiceId(
+        this IResourceBuilder<OrleansResource> builder,
+        string serviceId)
+    {
+        builder.Resource.ServiceId = serviceId;
+        return builder;
+    }
 
     public static IResourceBuilder<OrleansResource> WithClustering(
         this IResourceBuilder<OrleansResource> builder,
@@ -60,22 +76,32 @@ public static class IDistributedApplicationBuilderExtensions
         foreach (var (name, storage) in res.GrainStorage)
         {
             builder.WithReference(storage);
-            builder.WithEnvironment($"{OrleansConfigKeyEnvVarPrefix}__GrainStorage__{name}__ConnectionType", GetResourceType(storage));
-            builder.WithEnvironment($"{OrleansConfigKeyEnvVarPrefix}__GrainStorage__{name}__ConnectionName", storage.Resource.Name);
+            builder.WithEnvironment($"{OrleansConfigKeyPrefix}__GrainStorage__{name}__ConnectionType", GetResourceType(storage));
+            builder.WithEnvironment($"{OrleansConfigKeyPrefix}__GrainStorage__{name}__ConnectionName", storage.Resource.Name);
         }
 
         if (res.Reminders is { } reminders)
         {
             builder.WithReference(reminders);
-            builder.WithEnvironment($"{OrleansConfigKeyEnvVarPrefix}__Reminders__ConnectionType", GetResourceType(reminders));
-            builder.WithEnvironment($"{OrleansConfigKeyEnvVarPrefix}__Reminders__ConnectionName", reminders.Resource.Name);
+            builder.WithEnvironment($"{OrleansConfigKeyPrefix}__Reminders__ConnectionType", GetResourceType(reminders));
+            builder.WithEnvironment($"{OrleansConfigKeyPrefix}__Reminders__ConnectionName", reminders.Resource.Name);
         }
 
         // Configure clustering
         var clustering = res.Clustering ?? throw new InvalidOperationException("Clustering has not been configured for this service.");
         builder.WithReference(clustering);
-        builder.WithEnvironment($"{OrleansConfigKeyEnvVarPrefix}__Clustering__ConnectionType", GetResourceType(clustering));
-        builder.WithEnvironment($"{OrleansConfigKeyEnvVarPrefix}__Clustering__ConnectionName", clustering.Resource.Name);
+        builder.WithEnvironment($"{OrleansConfigKeyPrefix}__Clustering__ConnectionType", GetResourceType(clustering));
+        builder.WithEnvironment($"{OrleansConfigKeyPrefix}__Clustering__ConnectionName", clustering.Resource.Name);
+
+        if (!string.IsNullOrWhiteSpace(res.ClusterId))
+        {
+            builder.WithEnvironment($"{OrleansConfigKeyPrefix}__ClusterId", res.ClusterId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(res.ServiceId))
+        {
+            builder.WithEnvironment($"{OrleansConfigKeyPrefix}__ServiceId", res.ServiceId);
+        }
 
         return builder;
     }

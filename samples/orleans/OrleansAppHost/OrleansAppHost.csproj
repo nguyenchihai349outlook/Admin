@@ -27,13 +27,5 @@
     <ProjectReference Include="..\..\..\src\Aspire.Hosting.Orleans\Aspire.Hosting.Orleans.csproj" />
     <ProjectReference Include="..\OrleansServer\OrleansServer.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Content Update="appsettings.json">
-      <Generator>SettingsSingleFileGenerator</Generator>
-      <LastGenOutput>appsettings.Designer.cs</LastGenOutput>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
   
 </Project>
