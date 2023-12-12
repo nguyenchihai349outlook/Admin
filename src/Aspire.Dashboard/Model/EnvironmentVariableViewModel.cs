@@ -5,6 +5,8 @@ namespace Aspire.Dashboard.Model;
 
 public sealed class EnvironmentVariableViewModel : IEquatable<EnvironmentVariableViewModel>
 {
+    // IMPORTANT! Be sure to reflect any property changes here in the Equals method below
+
     public required string Name { get; init; }
     public string? Value { get; init; }
     public bool IsValueMasked { get; set; } = true;

@@ -8,6 +8,8 @@ namespace Aspire.Dashboard.Model;
 /// </summary>
 public class ProjectViewModel : ExecutableViewModel
 {
+    // IMPORTANT! Be sure to reflect any property changes here in the Equals method below
+
     public override string ResourceType => "Project";
 
     public required string ProjectPath { get; init; }

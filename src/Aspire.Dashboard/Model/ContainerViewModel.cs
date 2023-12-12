@@ -11,6 +11,8 @@ namespace Aspire.Dashboard.Model;
 /// </summary>
 public class ContainerViewModel : ResourceViewModel
 {
+    // IMPORTANT! Be sure to reflect any property changes here in the Equals method below
+
     public override string ResourceType => "Container";
 
     public required string? ContainerId { get; init; }

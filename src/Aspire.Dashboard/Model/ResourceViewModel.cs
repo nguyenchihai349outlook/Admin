@@ -11,6 +11,8 @@ namespace Aspire.Dashboard.Model;
 /// </summary>
 public abstract class ResourceViewModel
 {
+    // IMPORTANT! Be sure to reflect any property changes here in the Equals method below
+
     public required string Name { get; init; }
     public required string DisplayName { get; init; }
     public required string Uid { get; init; }
@@ -63,6 +65,8 @@ public abstract class ResourceViewModel
 
 public sealed class ResourceServiceSnapshot(string name, string? allocatedAddress, int? allocatedPort) : IEquatable<ResourceServiceSnapshot>
 {
+    // IMPORTANT! Be sure to reflect any property changes here in the Equals method below
+
     public string Name { get; } = name;
     public string? AllocatedAddress { get; } = allocatedAddress;
     public int? AllocatedPort { get; } = allocatedPort;
