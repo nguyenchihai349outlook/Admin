@@ -47,16 +47,6 @@ public abstract class ResourceViewModel
         return Name.Contains(filter, StringComparisons.UserTextSearch);
     }
 
-    public override bool Equals(object? obj)
-    {
-        return obj is ResourceViewModel other && Equals(other);
-    }
-
-    public override int GetHashCode()
-    {
-        return base.GetHashCode();
-    }
-
     public virtual bool Equals(ResourceViewModel? other)
     {
         return other is not null
