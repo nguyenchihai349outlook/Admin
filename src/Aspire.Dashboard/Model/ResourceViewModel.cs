@@ -46,12 +46,44 @@ public abstract class ResourceViewModel
     {
         return Name.Contains(filter, StringComparisons.UserTextSearch);
     }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is ResourceViewModel other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return base.GetHashCode();
+    }
+
+    public virtual bool Equals(ResourceViewModel? other)
+    {
+        return other is not null
+            && StringComparer.Ordinal.Equals(State, other.State)
+            && StringComparer.Ordinal.Equals(Uid, other.Uid)
+            && StringComparer.Ordinal.Equals(Name, other.Name)
+            && CreationTimeStamp == other.CreationTimeStamp
+            && ExpectedEndpointsCount == other.ExpectedEndpointsCount
+            && Environment.SequenceEqual(other.Environment)
+            && Endpoints.SequenceEqual(other.Endpoints, StringComparer.Ordinal)
+            && Services.SequenceEqual(other.Services);
+    }
 }
 
-public sealed class ResourceServiceSnapshot(string name, string? allocatedAddress, int? allocatedPort)
+public sealed class ResourceServiceSnapshot(string name, string? allocatedAddress, int? allocatedPort) : IEquatable<ResourceServiceSnapshot>
 {
     public string Name { get; } = name;
     public string? AllocatedAddress { get; } = allocatedAddress;
     public int? AllocatedPort { get; } = allocatedPort;
+
     public string AddressAndPort { get; } = $"{allocatedAddress}:{allocatedPort}";
+
+    public bool Equals(ResourceServiceSnapshot? other)
+    {
+        return other is not null
+            && StringComparer.Ordinal.Equals(Name, other.Name)
+            && StringComparer.Ordinal.Equals(AllocatedAddress, other.AllocatedAddress)
+            && AllocatedPort == other.AllocatedPort;
+    }
 }

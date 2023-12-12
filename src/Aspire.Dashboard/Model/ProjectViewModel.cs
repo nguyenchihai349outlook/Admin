@@ -11,4 +11,11 @@ public class ProjectViewModel : ExecutableViewModel
     public override string ResourceType => "Project";
 
     public required string ProjectPath { get; init; }
+
+    public override bool Equals(ResourceViewModel? other)
+    {
+        return other is ProjectViewModel project
+            && StringComparer.Ordinal.Equals(ProjectPath, project.ProjectPath)
+            && base.Equals(other);
+    }
 }

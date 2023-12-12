@@ -23,4 +23,16 @@ public class ContainerViewModel : ResourceViewModel
     {
         return base.MatchesFilter(filter) || Image.Contains(filter, StringComparisons.UserTextSearch);
     }
+
+    public override bool Equals(ResourceViewModel? other)
+    {
+        return other is ContainerViewModel container
+            && StringComparer.Ordinal.Equals(ContainerId, container.ContainerId)
+            && StringComparer.Ordinal.Equals(Image, container.Image)
+            && StringComparer.Ordinal.Equals(Command, container.Command)
+            && Ports.SequenceEqual(container.Ports)
+            && Args is null == container.Args is null
+            && (Args is null || Args.Value.SequenceEqual(container.Args!.Value))
+            && base.Equals(other);
+    }
 }
