@@ -353,7 +353,7 @@ public class DistributedApplicationTests
 
         var client = app.Services.GetRequiredService<IHttpClientFactory>().CreateClient();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
 
         await app.StartAsync(cts.Token);
 

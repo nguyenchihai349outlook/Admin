@@ -12,7 +12,7 @@ public class ResourcePublisherTests
     [Fact]
     public async Task ProducesExpectedSnapshotAndUpdates()
     {
-        CancellationTokenSource cts = new();
+        using CancellationTokenSource cts = new();
         ResourcePublisher publisher = new(cts.Token);
 
         var a = CreateResource("A");
@@ -56,7 +56,7 @@ public class ResourcePublisherTests
     [Fact]
     public async Task SupportsMultipleSubscribers()
     {
-        CancellationTokenSource cts = new();
+        using CancellationTokenSource cts = new();
         ResourcePublisher publisher = new(cts.Token);
 
         var a = CreateResource("A");
@@ -86,17 +86,19 @@ public class ResourcePublisherTests
         Assert.Same(c, enumerator2.Current.Resource);
 
         await cts.CancelAsync();
+        await enumerator1.DisposeAsync();
+        await enumerator2.DisposeAsync();
     }
 
     [Fact]
     public async Task MergesResourcesInSnapshot()
     {
-        CancellationTokenSource cts = new();
+        using CancellationTokenSource cts = new();
         ResourcePublisher publisher = new(cts.Token);
 
-        var a1 = CreateResource("A");
-        var a2 = CreateResource("A");
-        var a3 = CreateResource("A");
+        var a1 = CreateResource("A", "state1");
+        var a2 = CreateResource("A", "state2");
+        var a3 = CreateResource("A", "state3");
 
         await publisher.IntegrateAsync(a1, ResourceChangeType.Upsert).ConfigureAwait(false);
         await publisher.IntegrateAsync(a2, ResourceChangeType.Upsert).ConfigureAwait(false);
@@ -110,9 +112,46 @@ public class ResourcePublisherTests
     }
 
     [Fact]
+    public async Task SwallowsUnchangedResourceUpdates()
+    {
+        using CancellationTokenSource cts = new();
+        ResourcePublisher publisher = new(cts.Token);
+
+        var a1 = CreateResource("A");
+        var a2 = CreateResource("A");
+        var a3 = CreateResource("A");
+
+        await publisher.IntegrateAsync(a1, ResourceChangeType.Upsert).ConfigureAwait(false);
+        await publisher.IntegrateAsync(a2, ResourceChangeType.Upsert).ConfigureAwait(false);
+
+        var (snapshot, subscription) = publisher.Subscribe();
+
+        Assert.Same(a1, Assert.Single(snapshot));
+
+        var received = false;
+        var task = Task.Run(async () =>
+        {
+            await foreach (var _ in subscription.WithCancellation(cts.Token).ConfigureAwait(false))
+            {
+                received = true;
+            }
+        });
+
+        await publisher.IntegrateAsync(a3, ResourceChangeType.Upsert).ConfigureAwait(false);
+
+        await Task.Delay(50);
+
+        Assert.False(received);
+
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => task);
+    }
+
+    [Fact]
     public async Task DeletesRemoveFromSnapshot()
     {
-        CancellationTokenSource cts = new();
+        using CancellationTokenSource cts = new();
         ResourcePublisher publisher = new(cts.Token);
 
         var a = CreateResource("A");
@@ -129,13 +168,13 @@ public class ResourcePublisherTests
         await cts.CancelAsync();
     }
 
-    private static ContainerViewModel CreateResource(string name)
+    private static ContainerViewModel CreateResource(string name, string state = "")
     {
         return new ContainerViewModel()
         {
             Name = name,
             Uid = "",
-            State = "",
+            State = state,
             CreationTimeStamp = null,
             DisplayName = "",
             Endpoints = [],
