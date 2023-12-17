@@ -15,11 +15,12 @@ namespace Aspire.Hosting.Dashboard;
 /// <summary>
 /// Pulls data about resources from DCP's kubernetes API. Streams updates to consumers.
 /// </summary>
-internal sealed class DcpDataSource
+internal sealed class DcpDataSource : IDisposable
 {
     private readonly KubernetesService _kubernetesService;
     private readonly DistributedApplicationModel _applicationModel;
     private readonly Func<ResourceViewModel, ResourceChangeType, ValueTask> _onResourceChanged;
+    private readonly CancellationTokenSource _cts = new();
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, Container> _containersMap = [];
@@ -28,12 +29,13 @@ internal sealed class DcpDataSource
     private readonly Dictionary<string, Endpoint> _endpointsMap = [];
     private readonly Dictionary<(string, string), List<string>> _resourceAssociatedServicesMap = [];
 
+    private CancellationToken CancellationToken => _cts.Token;
+
     public DcpDataSource(
         KubernetesService kubernetesService,
         DistributedApplicationModel applicationModel,
         ILoggerFactory loggerFactory,
-        Func<ResourceViewModel, ResourceChangeType, ValueTask> onResourceChanged,
-        CancellationToken cancellationToken)
+        Func<ResourceViewModel, ResourceChangeType, ValueTask> onResourceChanged)
     {
         _kubernetesService = kubernetesService;
         _applicationModel = applicationModel;
@@ -49,21 +51,21 @@ internal sealed class DcpDataSource
                 using (semaphore)
                 {
                     await Task.WhenAll(
-                        Task.Run(() => WatchKubernetesResource<Executable>((t, r) => ProcessResourceChange(t, r, _executablesMap, "Executable", ToSnapshot)), cancellationToken),
-                        Task.Run(() => WatchKubernetesResource<Container>((t, r) => ProcessResourceChange(t, r, _containersMap, "Container", ToSnapshot)), cancellationToken),
-                        Task.Run(() => WatchKubernetesResource<Service>(ProcessServiceChange), cancellationToken),
-                        Task.Run(() => WatchKubernetesResource<Endpoint>(ProcessEndpointChange), cancellationToken)).ConfigureAwait(false);
+                        Task.Run(() => WatchKubernetesResource<Executable>((t, r) => ProcessResourceChange(t, r, _executablesMap, "Executable", ToSnapshot)), CancellationToken),
+                        Task.Run(() => WatchKubernetesResource<Container>((t, r) => ProcessResourceChange(t, r, _containersMap, "Container", ToSnapshot)), CancellationToken),
+                        Task.Run(() => WatchKubernetesResource<Service>(ProcessServiceChange), CancellationToken),
+                        Task.Run(() => WatchKubernetesResource<Endpoint>(ProcessEndpointChange), CancellationToken)).ConfigureAwait(false);
                 }
             },
-            cancellationToken);
+            CancellationToken);
 
         async Task WatchKubernetesResource<T>(Func<WatchEventType, T, Task> handler) where T : CustomResource
         {
             try
             {
-                await foreach (var (eventType, resource) in _kubernetesService.WatchAsync<T>(cancellationToken: cancellationToken))
+                await foreach (var (eventType, resource) in _kubernetesService.WatchAsync<T>(cancellationToken: CancellationToken))
                 {
-                    await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    await semaphore.WaitAsync(CancellationToken).ConfigureAwait(false);
 
                     try
                     {
@@ -426,5 +428,11 @@ internal sealed class DcpDataSource
             }
         }
         return displayName;
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 }

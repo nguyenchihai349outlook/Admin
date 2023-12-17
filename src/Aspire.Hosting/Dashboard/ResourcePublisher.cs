@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Aspire.Dashboard.Model;
 
@@ -12,37 +13,47 @@ namespace Aspire.Hosting.Dashboard;
 /// and allowing multiple subscribers to receive the current resource collection
 /// snapshot and future updates.
 /// </summary>
-internal sealed class ResourcePublisher(CancellationToken cancellationToken)
+internal sealed class ResourcePublisher : IDisposable
 {
     private readonly object _syncLock = new();
+    private bool _disposed;
     private readonly Dictionary<string, ResourceViewModel> _snapshot = [];
-    private ImmutableHashSet<Channel<ResourceChange>> _outgoingChannels = [];
+    // Internal for testing
+    internal ImmutableHashSet<Channel<ResourceChange>> _outgoingChannels = [];
 
     public ResourceSubscription Subscribe()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var channel = Channel.CreateUnbounded<ResourceChange>();
+
+        ImmutableInterlocked.Update(ref _outgoingChannels, static (set, channel) => set.Add(channel), channel);
+
+        List<ResourceViewModel> snapshot;
         lock (_syncLock)
         {
-            var channel = Channel.CreateUnbounded<ResourceChange>();
+            snapshot = _snapshot.Values.ToList();
+        }
 
-            ImmutableInterlocked.Update(ref _outgoingChannels, static (set, channel) => set.Add(channel), channel);
+        return new ResourceSubscription(
+            Snapshot: snapshot,
+            Subscription: StreamUpdates());
 
-            return new ResourceSubscription(
-                Snapshot: _snapshot.Values.ToList(),
-                Subscription: StreamUpdates());
-
-            async IAsyncEnumerable<ResourceChange> StreamUpdates()
+        async IAsyncEnumerable<ResourceChange> StreamUpdates([EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            try
             {
-                try
+                while (await channel.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    while (!cancellationToken.IsCancellationRequested)
+                    if (channel.Reader.TryRead(out var item))
                     {
-                        yield return await channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                        yield return item;
                     }
                 }
-                finally
-                {
-                    ImmutableInterlocked.Update(ref _outgoingChannels, static (set, channel) => set.Remove(channel), channel);
-                }
+            }
+            finally
+            {
+                ImmutableInterlocked.Update(ref _outgoingChannels, static (set, channel) => set.Remove(channel), channel);
             }
         }
     }
@@ -55,6 +66,8 @@ internal sealed class ResourcePublisher(CancellationToken cancellationToken)
     /// <returns>A task that completes when the cache has been updated and all subscribers notified.</returns>
     public async ValueTask IntegrateAsync(ResourceViewModel resource, ResourceChangeType changeType)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         lock (_syncLock)
         {
             switch (changeType)
@@ -75,9 +88,22 @@ internal sealed class ResourcePublisher(CancellationToken cancellationToken)
             }
         }
 
+        // The publisher could be disposed while writing. WriteAsync will throw ChannelClosedException.
         foreach (var channel in _outgoingChannels)
         {
-            await channel.Writer.WriteAsync(new(changeType, resource), cancellationToken).ConfigureAwait(false);
+            await channel.Writer.WriteAsync(new(changeType, resource)).ConfigureAwait(false);
         }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+
+        foreach (var item in _outgoingChannels)
+        {
+            item.Writer.Complete();
+        }
+
+        _outgoingChannels = _outgoingChannels.Clear();
     }
 }

@@ -9,19 +9,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Aspire.Hosting.Dashboard;
 
-internal sealed partial class ResourceService : IResourceService, IAsyncDisposable
+internal sealed partial class ResourceService : IResourceService, IDisposable
 {
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly ResourcePublisher _resourcePublisher;
+    private readonly DcpDataSource _dcpDataSource;
 
     public ResourceService(
         DistributedApplicationModel applicationModel, KubernetesService kubernetesService, IHostEnvironment hostEnvironment, ILoggerFactory loggerFactory)
     {
         ApplicationName = ComputeApplicationName(hostEnvironment.ApplicationName);
 
-        _resourcePublisher = new ResourcePublisher(_cancellationTokenSource.Token);
-
-        _ = new DcpDataSource(kubernetesService, applicationModel, loggerFactory, _resourcePublisher.IntegrateAsync, _cancellationTokenSource.Token);
+        _resourcePublisher = new ResourcePublisher();
+        _dcpDataSource = new DcpDataSource(kubernetesService, applicationModel, loggerFactory, _resourcePublisher.IntegrateAsync);
 
         static string ComputeApplicationName(string applicationName)
         {
@@ -40,13 +39,9 @@ internal sealed partial class ResourceService : IResourceService, IAsyncDisposab
 
     public ResourceSubscription Subscribe() => _resourcePublisher.Subscribe();
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
-        // NOTE we don't complete channel writers, nor wait for channel readers to complete.
-        // Instead we signal cancellation, which causes both processes to halt immediately.
-        // Any pending messages will be collected along with this class, which is being disposed
-        // right now. We don't have to clean anything up for the channels.
-
-        await _cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+        _resourcePublisher.Dispose();
+        _dcpDataSource.Dispose();
     }
 }
