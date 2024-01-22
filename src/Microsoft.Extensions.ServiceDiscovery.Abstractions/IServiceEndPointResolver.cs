@@ -9,11 +9,6 @@ namespace Microsoft.Extensions.ServiceDiscovery.Abstractions;
 public interface IServiceEndPointResolver : IAsyncDisposable
 {
     /// <summary>
-    /// Gets the diagnostic display name for this resolver.
-    /// </summary>
-    string DisplayName { get; }
-
-    /// <summary>
     /// Resolves endpoints for the service.
     /// </summary>
     /// <param name="endPoints">The collection which resolved endpoints will be added to.</param>

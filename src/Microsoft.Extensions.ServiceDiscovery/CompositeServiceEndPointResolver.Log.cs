@@ -30,7 +30,7 @@ partial class CompositeServiceEndPointResolver
             {
                 if (ep.Features.Get<IServiceEndPointResolver>() is { } resolver)
                 {
-                    return $"{ep.GetEndPointString()} ({resolver.DisplayName})";
+                    return $"{ep.GetEndPointString()} ({resolver})";
                 }
 
                 return ep.GetEndPointString();
