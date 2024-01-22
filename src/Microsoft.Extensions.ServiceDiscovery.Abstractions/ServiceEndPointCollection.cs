@@ -82,6 +82,6 @@ public class ServiceEndPointCollection : IReadOnlyList<ServiceEndPoint>
         public IFeatureCollection Features => value.Features;
 
         [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-        public ServiceEndPoint[] EndPoints => value.ToArray();
+        public ServiceEndPoint[] EndPoints => [.. value];
     }
 }

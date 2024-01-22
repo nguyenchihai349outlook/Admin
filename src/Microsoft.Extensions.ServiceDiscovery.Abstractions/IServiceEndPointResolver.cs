@@ -9,10 +9,10 @@ namespace Microsoft.Extensions.ServiceDiscovery.Abstractions;
 public interface IServiceEndPointResolver : IAsyncDisposable
 {
     /// <summary>
-    /// Attempts to resolve the endpoints for the service which this instance is configured to resolve endpoints for.
+    /// Resolves endpoints for the service.
     /// </summary>
-    /// <param name="endPoints">The endpoint collection, which resolved endpoints will be added to.</param>
+    /// <param name="endPoints">The collection which resolved endpoints will be added to.</param>
     /// <param name="cancellationToken">The token to monitor for cancellation requests.</param>
-    /// <returns>The resolution status.</returns>
+    /// <returns>A task that represents the asynchronous resolution operation, which contains result of resolution status.</returns>
     ValueTask<ResolutionStatus> ResolveAsync(ServiceEndPointCollectionSource endPoints, CancellationToken cancellationToken);
 }
