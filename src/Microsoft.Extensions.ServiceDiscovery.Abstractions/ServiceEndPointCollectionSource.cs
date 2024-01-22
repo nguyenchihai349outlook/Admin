@@ -11,8 +11,8 @@ namespace Microsoft.Extensions.ServiceDiscovery.Abstractions;
 /// </summary>
 public class ServiceEndPointCollectionSource(string serviceName, IFeatureCollection features)
 {
-    private readonly List<ServiceEndPoint> _endPoints = new();
-    private readonly List<IChangeToken> _changeTokens = new();
+    private readonly List<ServiceEndPoint> _endPoints = [];
+    private readonly List<IChangeToken> _changeTokens = [];
 
     /// <summary>
     /// Gets the service name.
