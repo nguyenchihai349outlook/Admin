@@ -1,6 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Microsoft.Extensions.ServiceDiscovery.Abstractions;
 
 /// <summary>
@@ -18,16 +20,18 @@ public class PowerOfTwoChoicesServiceEndPointSelector : IServiceEndPointSelector
     }
 
     /// <inheritdoc/>
-    public ServiceEndPoint GetEndPoint(object? context)
+    public bool TryGetEndPoint(object? context, [NotNullWhen(true)] out ServiceEndPoint? endpoint)
     {
         if (_endPoints is not { Count: > 0 } collection)
         {
-            throw new InvalidOperationException("The endpoint collection contains no endpoints");
+            endpoint = default;
+            return false;
         }
 
         if (collection.Count == 1)
         {
-            return collection[0];
+            endpoint = collection[0];
+            return true;
         }
 
         var first = collection[Random.Shared.Next(collection.Count)];
@@ -41,10 +45,12 @@ public class PowerOfTwoChoicesServiceEndPointSelector : IServiceEndPointSelector
         if (first.Features.Get<IEndPointLoadFeature>() is { } firstLoad
             && second.Features.Get<IEndPointLoadFeature>() is { } secondLoad)
         {
-            return firstLoad.CurrentLoad < secondLoad.CurrentLoad ? first : second;
+            endpoint = firstLoad.CurrentLoad < secondLoad.CurrentLoad ? first : second;
+            return true;
         }
 
         // Degrade to random.
-        return first;
+        endpoint = first;
+        return false;
     }
 }

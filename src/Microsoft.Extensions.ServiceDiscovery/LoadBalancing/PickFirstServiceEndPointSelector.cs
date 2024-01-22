@@ -1,6 +1,8 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Microsoft.Extensions.ServiceDiscovery.Abstractions;
 
 /// <summary>
@@ -11,14 +13,16 @@ public class PickFirstServiceEndPointSelector : IServiceEndPointSelector
     private ServiceEndPointCollection? _endPoints;
 
     /// <inheritdoc/>
-    public ServiceEndPoint GetEndPoint(object? context)
+    public bool TryGetEndPoint(object? context, [NotNullWhen(true)] out ServiceEndPoint? endpoint)
     {
         if (_endPoints is not { Count: > 0 } endPoints)
         {
-            throw new InvalidOperationException("The endpoint collection contains no endpoints");
+            endpoint = null;
+            return false;
         }
 
-        return endPoints[0];
+        endpoint = endPoints[0];
+        return true;
     }
 
     /// <inheritdoc/>

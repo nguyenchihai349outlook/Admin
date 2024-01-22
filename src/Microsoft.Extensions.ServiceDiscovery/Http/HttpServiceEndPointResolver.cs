@@ -199,8 +199,8 @@ public class HttpServiceEndPointResolver(ServiceEndPointResolverFactory resolver
                     // If the resolver is valid, resolve.
                     // We ensure that it will not be disposed while we are resolving.
                     await _resolver.GetEndPointsAsync(cancellationToken).ConfigureAwait(false);
-                    var result = _selector.GetEndPoint(context);
-                    return (true, result);
+                    var result = _selector.TryGetEndPoint(context, out var endpoint);
+                    return (result, endpoint);
                 }
                 else
                 {
