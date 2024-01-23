@@ -10,7 +10,7 @@ namespace Microsoft.Extensions.ServiceDiscovery.Abstractions;
 /// </summary>
 public class RoundRobinServiceEndPointSelector : IServiceEndPointSelector
 {
-    private uint _next;
+    private uint _next = uint.MaxValue;
     private ServiceEndPointCollection? _endPoints;
 
     /// <inheritdoc/>
