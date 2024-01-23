@@ -8,9 +8,9 @@ namespace Aspire.Hosting.ApplicationModel;
 /// </summary>
 /// <param name="name">The name of the resource.</param>
 /// <param name="postgresParentResource">The PostgreSQL parent resource associated with this database.</param>
-public class PostgresDatabaseResource(string name, IPostgresParentResource postgresParentResource) : Resource(name), IResourceWithParent<IPostgresParentResource>, IResourceWithConnectionString
+public class PostgresDatabaseResource(string name, IPostgresServiceResource postgresParentResource) : Resource(name), IResourceWithParent<IPostgresServiceResource>, IResourceWithConnectionString
 {
-    public IPostgresParentResource Parent { get; } = postgresParentResource;
+    public IPostgresServiceResource Parent { get; } = postgresParentResource;
 
     /// <summary>
     /// Gets the connection string for the Postgres database.

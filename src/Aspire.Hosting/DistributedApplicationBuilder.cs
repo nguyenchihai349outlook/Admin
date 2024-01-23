@@ -33,7 +33,8 @@ public class DistributedApplicationBuilder : IDistributedApplicationBuilder
     public string AppHostDirectory { get; }
 
     /// <inheritdoc />
-    public IResourceCollection Resources { get; } = new ResourceCollection();
+    private readonly ResourceCollection _resources = [];
+    public IResourceCollection Resources => _resources;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DistributedApplicationBuilder"/> class with the specified options.
@@ -103,6 +104,7 @@ public class DistributedApplicationBuilder : IDistributedApplicationBuilder
         AspireEventSource.Instance.DistributedApplicationBuildStart();
         try
         {
+            RunBuildActions();
             var application = new DistributedApplication(_innerBuilder.Build(), _args);
             return application;
         }
@@ -110,6 +112,55 @@ public class DistributedApplicationBuilder : IDistributedApplicationBuilder
         {
             AspireEventSource.Instance.DistributedApplicationBuildStop();
         }
+    }
+
+    private void RunBuildActions()
+    {
+        var runActions = new List<(BuildActionAnnotation Action, ResourceMetadataCollection Annotations, int OriginalVersion)>();
+        var operationContext = new OperationContext(this, OperationContext.Run);
+        bool dirty;
+        do
+        {
+            dirty = false;
+            var originalResourcesVersion = _resources.Version;
+
+            // Find the actions to run.
+            foreach (var resource in _resources)
+            {
+                foreach (var annotation in resource.Annotations)
+                {
+                    if (annotation is not BuildActionAnnotation runCallbackAnnotation)
+                    {
+                        continue;
+                    }
+
+                    if (!runCallbackAnnotation.HasRun)
+                    {
+                        runActions.Add((runCallbackAnnotation, resource.Annotations, resource.Annotations.Version));
+                    }
+                }
+            }
+
+            // Run the actions.
+            foreach (var (action, _, _) in runActions)
+            {
+                action.Callback(operationContext);
+                action.HasRun = true;
+            }
+
+            // Check whether the actions modified the model and loop if so.
+            foreach (var (_, annotations, originalVersion) in runActions)
+            {
+                if (annotations.Version != originalVersion)
+                {
+                    runActions.Clear();
+                    dirty = true;
+                    break;
+                }
+            }
+
+            dirty |= originalResourcesVersion != _resources.Version;
+        } while (dirty);
     }
 
     /// <inheritdoc />

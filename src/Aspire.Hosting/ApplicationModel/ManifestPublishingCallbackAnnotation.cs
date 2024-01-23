@@ -21,3 +21,28 @@ public class ManifestPublishingCallbackAnnotation(Action<ManifestPublishingConte
     /// </summary>
     public static ManifestPublishingCallbackAnnotation Ignore { get; } = new(null);
 }
+
+public record class OperationContext(IDistributedApplicationBuilder Builder, string OperationType)
+{
+    public const string Run = nameof(Run);
+    public const string PublishManifest = nameof(PublishManifest);
+};
+
+/// <summary>
+/// Represents an annotation that provides a callback to be executed when building the application model.
+/// </summary>
+public class BuildActionAnnotation(Action<OperationContext> callback) : IResourceAnnotation
+{
+    /// <summary>
+    /// Gets the callback action used during build before running the application.
+    /// </summary>
+    public Action<OperationContext> Callback { get; } = callback;
+
+    internal bool HasRun { get; set; }
+    
+    /// <summary>
+    /// Represents a callback which performs no action.
+    /// </summary>
+    public static BuildActionAnnotation Ignore { get; } = new(_ => { });
+}
+

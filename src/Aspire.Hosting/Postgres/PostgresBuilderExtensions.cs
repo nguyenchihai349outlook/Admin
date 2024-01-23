@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Data.SqlTypes;
 using System.Net.Sockets;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Lifecycle;
@@ -47,6 +48,43 @@ public static class PostgresBuilderExtensions
                       });
     }
 
+    public static IResourceBuilder<ContainerResource> AsContainer(this IResourceBuilder<PostgresServerResource> postgresServer)
+    {
+        var abstractResource = (IAbstractResource<IPostgresServiceResource>)postgresServer.Resource;
+        if (abstractResource.Implementation is { } implementation)
+        {
+            if (implementation is ContainerResource container)
+            {
+                return new DistributedApplicationResourceBuilder<ContainerResource>(postgresServer.ApplicationBuilder, container);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Resource {postgresServer.Resource.Name} is implemented by {implementation}, which is not a container.");
+            }
+        }
+
+        var postgresContainer = new PostgresContainerResource(postgresServer.Resource.Name, postgresServer.Resource.Password);
+        var impl = postgresServer.ApplicationBuilder.AddResource(postgresContainer)
+                      .WithManifestPublishingCallback(context => WritePostgresContainerResourceToManifest(context, postgresContainer))
+                      .WithAnnotation(new EndpointAnnotation(ProtocolType.Tcp, containerPort: 5432)) // Internal port is always 5432.
+                      .WithAnnotation(new ContainerImageAnnotation { Image = "postgres", Tag = "latest" })
+                      .WithEnvironment("POSTGRES_HOST_AUTH_METHOD", "scram-sha-256")
+                      .WithEnvironment("POSTGRES_INITDB_ARGS", "--auth-host=scram-sha-256 --auth-local=scram-sha-256")
+                      .WithEnvironment(context =>
+                      {
+                          if (context.PublisherName == "manifest")
+                          {
+                              context.EnvironmentVariables.Add(PasswordEnvVarName, $"{{{postgresContainer.Name}.inputs.password}}");
+                          }
+                          else
+                          {
+                              context.EnvironmentVariables.Add(PasswordEnvVarName, postgresContainer.Password);
+                          }
+                      });
+        abstractResource.Implementation = impl.Resource;
+        return impl;
+    }
+
     /// <summary>
     /// Adds a PostgreSQL resource to the application model. A container is used for local development.
     /// </summary>
@@ -58,12 +96,31 @@ public static class PostgresBuilderExtensions
         var password = Guid.NewGuid().ToString("N");
         var postgresServer = new PostgresServerResource(name, password);
         return builder.AddResource(postgresServer)
-                      .WithManifestPublishingCallback(WritePostgresContainerToManifest)
-                      .WithAnnotation(new EndpointAnnotation(ProtocolType.Tcp, containerPort: 5432)) // Internal port is always 5432.
-                      .WithAnnotation(new ContainerImageAnnotation { Image = "postgres", Tag = "latest" })
-                      .WithEnvironment("POSTGRES_HOST_AUTH_METHOD", "scram-sha-256")
-                      .WithEnvironment("POSTGRES_INITDB_ARGS", "--auth-host=scram-sha-256 --auth-local=scram-sha-256")
-                      .WithEnvironment(PasswordEnvVarName, () => postgresServer.Password);
+            .WithBuildCallback((builder, ctx) =>
+            {
+                // If an implementation has been specified already, then we don't need to do anything.
+                if (builder.HasImplementationResource())
+                {
+                    if (ctx.OperationType == OperationContext.PublishManifest)
+                    {
+                        builder.ExcludeFromManifest();
+                    }
+
+                    return;
+                }
+
+                // Run default actions, depending on what the model is being used for.
+                switch (ctx.OperationType)
+                {
+                    case OperationContext.Run:
+                        builder.AsContainer();
+                        break;
+                    case OperationContext.PublishManifest:
+                        builder.WithManifestPublishingCallback(WritePostgresContainerToManifest);
+                        break;
+                }
+            })
+          .WithEnvironment(PasswordEnvVarName, () => postgresServer.Password);
     }
 
     /// <summary>
@@ -72,7 +129,7 @@ public static class PostgresBuilderExtensions
     /// <param name="builder">The PostgreSQL server resource builder.</param>
     /// <param name="name">The name of the resource. This name will be used as the connection string name when referenced in a dependency.</param>
     /// <returns>A reference to the <see cref="IResourceBuilder{PostgresDatabaseResource}"/>.</returns>
-    public static IResourceBuilder<PostgresDatabaseResource> AddDatabase(this IResourceBuilder<IPostgresParentResource> builder, string name)
+    public static IResourceBuilder<PostgresDatabaseResource> AddDatabase(this IResourceBuilder<IPostgresServiceResource> builder, string name)
     {
         var postgresDatabase = new PostgresDatabaseResource(name, builder.Resource);
         return builder.ApplicationBuilder.AddResource(postgresDatabase)
@@ -86,24 +143,40 @@ public static class PostgresBuilderExtensions
     /// <param name="hostPort">The host port for the application ui.</param>
     /// <param name="containerName">The name of the container (Optional).</param>
     /// <returns>A reference to the <see cref="IResourceBuilder{PostgresContainerResource}"/>.</returns>
-    public static IResourceBuilder<T> WithPgAdmin<T>(this IResourceBuilder<T> builder, int? hostPort = null, string? containerName = null) where T: IPostgresParentResource
+    public static IResourceBuilder<T> WithPgAdmin<T>(this IResourceBuilder<T> builder, int? hostPort = null, string? containerName = null) where T : IPostgresServiceResource
     {
-        if (builder.ApplicationBuilder.Resources.OfType<PgAdminContainerResource>().Any())
+        builder.WithBuildCallback(context =>
         {
-            return builder;
-        }
+            // PgAdmin is only relevant when running the application, not when publishing the manifest.
+            if (context.OperationType != OperationContext.Run)
+            {
+                return;
+            }
 
-        builder.ApplicationBuilder.Services.TryAddLifecycleHook<PgAdminConfigWriterHook>();
+            // If Postgres isn't implemented as a container, pgAdmin is not relevant.
+            if (builder.GetImplementationResource() is not ContainerResource)
+            {
+                return;
+            }
 
-        containerName ??= $"{builder.Resource.Name}-pgadmin";
+            // Only one pgAdmin container is allowed per application.
+            if (builder.ApplicationBuilder.Resources.OfType<PgAdminContainerResource>().Any())
+            {
+                return;
+            }
 
-        var pgAdminContainer = new PgAdminContainerResource(containerName);
-        builder.ApplicationBuilder.AddResource(pgAdminContainer)
-                                  .WithAnnotation(new ContainerImageAnnotation { Image = "dpage/pgadmin4", Tag = "latest" })
-                                  .WithEndpoint(containerPort: 80, hostPort: hostPort, scheme: "http", name: containerName)
-                                  .WithEnvironment(SetPgAdminEnviromentVariables)
-                                  .WithVolumeMount(Path.GetTempFileName(), "/pgadmin4/servers.json")
-                                  .ExcludeFromManifest();
+            builder.ApplicationBuilder.Services.TryAddLifecycleHook<PgAdminConfigWriterHook>();
+
+            containerName ??= $"{builder.Resource.Name}-pgadmin";
+
+            var pgAdminContainer = new PgAdminContainerResource(containerName);
+            builder.ApplicationBuilder.AddResource(pgAdminContainer)
+                                      .WithAnnotation(new ContainerImageAnnotation { Image = "dpage/pgadmin4", Tag = "latest" })
+                                      .WithEndpoint(containerPort: 80, hostPort: hostPort, scheme: "http", name: containerName)
+                                      .WithEnvironment(SetPgAdminEnviromentVariables)
+                                      .WithVolumeMount(Path.GetTempFileName(), "/pgadmin4/servers.json")
+                                      .ExcludeFromManifest();
+        });
 
         return builder;
     }

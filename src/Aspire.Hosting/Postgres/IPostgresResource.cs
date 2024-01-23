@@ -6,6 +6,6 @@ namespace Aspire.Hosting.ApplicationModel;
 /// <summary>
 /// Represents a PostgreSQL resource that requires a connection string.
 /// </summary>
-public interface IPostgresParentResource : IResourceWithConnectionString, IResourceWithEnvironment
+public interface IPostgresServiceResource : IResourceWithConnectionString, IResourceWithEnvironment
 {
 }

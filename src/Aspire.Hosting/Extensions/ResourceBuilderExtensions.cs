@@ -86,6 +86,30 @@ public static class ResourceBuilderExtensions
         return builder.WithAnnotation(new ManifestPublishingCallbackAnnotation(callback));
     }
 
+    /// <summary>
+    /// Registers a callback which is invoked when manifest is generated for the app model.
+    /// </summary>
+    /// <typeparam name="T">The resource type.</typeparam>
+    /// <param name="builder">The resource builder.</param>
+    /// <param name="callback">Callback method which takes a <see cref="OperationContext"/> which can be used to modify the application builder.</param>
+    /// <returns></returns>
+    public static IResourceBuilder<T> WithBuildCallback<T>(this IResourceBuilder<T> builder, Action<OperationContext> callback) where T : IResource
+    {
+        return builder.WithAnnotation(new BuildActionAnnotation(callback));
+    }
+
+    /// <summary>
+    /// Registers a callback which is invoked when manifest is generated for the app model.
+    /// </summary>
+    /// <typeparam name="T">The resource type.</typeparam>
+    /// <param name="builder">The resource builder.</param>
+    /// <param name="callback">Callback method which takes a <see cref="OperationContext"/> which can be used to modify the application builder.</param>
+    /// <returns></returns>
+    public static IResourceBuilder<T> WithBuildCallback<T>(this IResourceBuilder<T> builder, Action<IResourceBuilder<T>, OperationContext> callback) where T : IResource
+    {
+        return builder.WithAnnotation(new BuildActionAnnotation(ctx => callback(builder, ctx)));
+    }
+
     private static bool ContainsAmbiguousEndpoints(IEnumerable<AllocatedEndpointAnnotation> endpoints)
     {
         // An ambiguous endpoint is where any scheme (
