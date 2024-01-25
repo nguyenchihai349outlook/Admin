@@ -42,6 +42,7 @@ steps:
         ${{ if ne(parameters.isWindows, 'true') }}:
           HelixTargetQueues: Ubuntu.2204.Amd64.Open
 
+        isWindows: ${{ parameters.isWindows }}
         Creator: $(Build.DefinitionName)
         HelixBuild: $(Build.BuildNumber)
         HelixAccessToken: $(HelixApiAccessToken)
