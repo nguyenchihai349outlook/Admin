@@ -56,7 +56,7 @@ steps:
     - ${{ if eq(parameters.isWindows, 'true') }}:
       - pwsh: |
             echo "(Get-ChildItem -Path ${{ parameters.repoTestResultsPath }}/../../../ -Recurse -Filter *.cobertura.xml -File | % { $_.FullName }) -join ' '"
-            $_cov_filelist=$((Get-ChildItem -Path ${{ parameters.repoTestResultsPath }}/../../../ -Recurse -Filter *.cs -File | % { $_.FullName }) -join ' ')
+            $_cov_filelist=$((Get-ChildItem -Path ${{ parameters.repoTestResultsPath }} -Recurse -Filter *.cobertura.xml -File | % { $_.FullName }) -join ' ')
             echo "${{ parameters.dotnetScript }} dotnet-coverage merge $_cov_filelist -f cobertura -o '${{ parameters.repoTestResultsPath }}/$(Agent.Os)_$(Agent.JobName).cobertura.xml'" > merge-cov.cmd
             cmd /c merge-cov.cmd
             rm merge-cov.cmd
