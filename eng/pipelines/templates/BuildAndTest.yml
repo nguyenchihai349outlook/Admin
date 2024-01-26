@@ -42,7 +42,7 @@ steps:
         ${{ if ne(parameters.isWindows, 'true') }}:
           HelixTargetQueues: Ubuntu.2204.Amd64.Open
 
-        isWindows: ${{ parameters.isWindows }}
+        IsWindows: ${{ parameters.isWindows }}
         Creator: $(Build.DefinitionName)
         HelixBuild: $(Build.BuildNumber)
         HelixAccessToken: $(HelixApiAccessToken)
@@ -56,9 +56,8 @@ steps:
     - ${{ if eq(parameters.isWindows, 'true') }}:
       - pwsh: |
             echo "(Get-ChildItem -Path ${{ parameters.repoTestResultsPath }}/../../../ -Recurse -Filter *.cobertura.xml -File | % { $_.FullName }) -join ' '"
-            $_filelist=$((Get-ChildItem -Path ${{ parameters.repoTestResultsPath }}/../../../ -Recurse -Filter *.cs -File | % { $_.FullName }) -join ' ')
-            echo "fl is $_filelist"
-            echo "${{ parameters.dotnetScript }} dotnet-coverage merge $_filelist -f cobertura -o '${{ parameters.repoTestResultsPath }}/$(Agent.Os)_$(Agent.JobName).cobertura.xml'" > merge-cov.cmd
+            $_cov_filelist=$((Get-ChildItem -Path ${{ parameters.repoTestResultsPath }}/../../../ -Recurse -Filter *.cs -File | % { $_.FullName }) -join ' ')
+            echo "${{ parameters.dotnetScript }} dotnet-coverage merge $_cov_filelist -f cobertura -o '${{ parameters.repoTestResultsPath }}/$(Agent.Os)_$(Agent.JobName).cobertura.xml'" > merge-cov.cmd
             cmd /c merge-cov.cmd
             rm merge-cov.cmd
         displayName: Merge code coverage results
