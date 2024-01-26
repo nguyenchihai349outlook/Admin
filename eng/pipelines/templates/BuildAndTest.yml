@@ -32,6 +32,12 @@ steps:
     displayName: Build
 
   - ${{ if ne(parameters.skipTests, 'true') }}:
+    - script: ${{ parameters.dotnetScript }} dotnet-coverage collect
+              --settings $(Build.SourcesDirectory)/eng/CodeCoverage.config
+              --output ${{ parameters.repoTestResultsPath }}/NonHelixTests.cobertura.xml
+              "${{ parameters.buildScript }} -testnobuild -test -configuration ${{ parameters.buildConfig }} /bl:${{ parameters.repoLogPath }}/tests.binlog /p:DefaultToRunningTestsOnHelix=${{ parameters.defaultToRunningTestsOnHelix }} $(_OfficialBuildIdArgs)"
+      displayName: Run non-helix tests
+
     - template: /eng/pipelines/templates/send-to-helix.yml
       parameters:
         HelixProjectPath: '$(Build.SourcesDirectory)/tests/send-to-helix.proj'
@@ -46,12 +52,6 @@ steps:
         Creator: $(Build.DefinitionName)
         HelixBuild: $(Build.BuildNumber)
         HelixAccessToken: $(HelixApiAccessToken)
-
-    - script: ${{ parameters.dotnetScript }} dotnet-coverage collect
-              --settings $(Build.SourcesDirectory)/eng/CodeCoverage.config
-              --output ${{ parameters.repoTestResultsPath }}/NonHelixTests.cobertura.xml
-              "${{ parameters.buildScript }} -testnobuild -test -configuration ${{ parameters.buildConfig }} /bl:${{ parameters.repoLogPath }}/tests.binlog /p:DefaultToRunningTestsOnHelix=${{ parameters.defaultToRunningTestsOnHelix }} $(_OfficialBuildIdArgs)"
-      displayName: Run non-helix tests
 
     - ${{ if eq(parameters.isWindows, 'true') }}:
       - pwsh: |
