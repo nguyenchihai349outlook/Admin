@@ -30,7 +30,7 @@ steps:
   - ${{ if ne(parameters.skipTests, 'true') }}:
     - script: ${{ parameters.dotnetScript }} dotnet-coverage collect
               --settings $(Build.SourcesDirectory)/eng/CodeCoverage.config
-              --output ${{ parameters.repoTestResultsPath }}/CodeCoverageResults/NonHelixTests.cobertura.xml
+              --output ${{ parameters.repoTestResultsPath }}/NonHelixTests.cobertura.xml
               "${{ parameters.buildScript }} -testnobuild -test -configuration ${{ parameters.buildConfig }} /bl:${{ parameters.repoLogPath }}/tests.binlog $(_OfficialBuildIdArgs)"
       displayName: Run non-helix tests
 
@@ -57,7 +57,7 @@ steps:
       displayName: Gather coverage results (cobertura.xml)
 
     - script: $(Build.SourcesDirectory)/.dotnet/dotnet dotnet-coverage merge
-              $(System.DefaultWorkingDirectory)/collected/*.cobertura.xml
+              ${{ parameters.repoTestResultsPath }}/collected/*.cobertura.xml
               --output-format cobertura
               --output ${{ parameters.repoTestResultsPath }}/$(Agent.Os)_$(Agent.JobName).cobertura.xml
       displayName: Merge code coverage reports
