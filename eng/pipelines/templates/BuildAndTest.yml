@@ -1,4 +1,4 @@
-parameters:
+p/stepsarameters:
   - name: runAsPublic
     type: boolean
     default: false
@@ -53,6 +53,7 @@ steps:
       inputs:
         Contents: '${{ parameters.repoTestResultsPath }}/**/*.cobertura.xml'
         TargetFolder: '${{ parameters.repoTestResultsPath }}/CodeCoverageResults'
+        flattenFolders: true
       displayName: Gather cobertura.xml files
 
     #- ${{ if eq(parameters.isWindows, 'true') }}:
