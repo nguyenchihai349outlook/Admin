@@ -1,4 +1,4 @@
-p/stepsarameters:
+parameters:
   - name: runAsPublic
     type: boolean
     default: false
