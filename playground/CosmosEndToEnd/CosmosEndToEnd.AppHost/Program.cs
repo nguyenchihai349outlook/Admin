@@ -1,9 +1,11 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using Aspire.Hosting.Azure;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
-var db = builder.AddAzureCosmosDB("cosmos")
+var db = builder.AddBicepCosmosDb("cosmos")
                 .UseEmulator()
                 .AddDatabase("db");
 
