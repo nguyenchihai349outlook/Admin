@@ -70,6 +70,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
     private readonly IDashboardEndpointProvider _dashboardEndpointProvider = dashboardEndpointProvider;
     private readonly IDashboardAvailability _dashboardAvailability = dashboardAvailability;
     private readonly DistributedApplicationExecutionContext _executionContext = executionContext;
+    private readonly object _lockObj = new();
     private readonly List<AppResource> _appResources = [];
 
     // These environment variables should never be inherited from app host;
@@ -270,7 +271,10 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
         finally
         {
             AspireEventSource.Instance.DcpModelCleanupStop();
-            _appResources.Clear();
+            lock (_lockObj)
+            {
+                _appResources.Clear();
+            }
         }
     }
 
@@ -280,7 +284,11 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
         {
             AspireEventSource.Instance.DcpServicesCreationStart();
 
-            var needAddressAllocated = _appResources.OfType<ServiceAppResource>().Where(sr => !sr.Service.HasCompleteAddress).ToList();
+            List<ServiceAppResource> needAddressAllocated;
+            lock (_lockObj)
+            {
+                needAddressAllocated = _appResources.OfType<ServiceAppResource>().Where(sr => !sr.Service.HasCompleteAddress).ToList();
+            }
 
             await CreateResourcesAsync<Service>(cancellationToken).ConfigureAwait(false);
 
@@ -372,7 +380,10 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
             svc.Spec.Protocol = PortProtocol.FromProtocolType(sba.Protocol);
             svc.Annotate(CustomResource.UriSchemeAnnotation, sba.UriScheme);
             svc.Spec.AddressAllocationMode = AddressAllocationModes.Localhost;
-            _appResources.Add(new ServiceAppResource(producingResource, svc, sba));
+            lock (_lockObj)
+            {
+                _appResources.Add(new ServiceAppResource(producingResource, svc, sba));
+            }
         }
 
         foreach (var sp in serviceProducers)
@@ -418,7 +429,10 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 
             var exeAppResource = new AppResource(executable, exe);
             AddServicesProducedInfo(executable, exe, exeAppResource);
-            _appResources.Add(exeAppResource);
+            lock (_lockObj)
+            {
+                _appResources.Add(exeAppResource);
+            }
         }
     }
 
@@ -508,7 +522,10 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 
             var exeAppResource = new AppResource(project, ers);
             AddServicesProducedInfo(project, annotationHolder, exeAppResource);
-            _appResources.Add(exeAppResource);
+            lock (_lockObj)
+            {
+                _appResources.Add(exeAppResource);
+            }
         }
     }
 
@@ -753,7 +770,10 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 
             var containerAppResource = new AppResource(container, ctr);
             AddServicesProducedInfo(container, ctr, containerAppResource);
-            _appResources.Add(containerAppResource);
+            lock (_lockObj)
+            {
+                _appResources.Add(containerAppResource);
+            }
         }
     }
 
@@ -855,7 +875,12 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
         }
         catch { } // For error messages only, OK to fall back to (unknown)
 
-        var servicesProduced = _appResources.OfType<ServiceAppResource>().Where(r => r.ModelResource == modelResource);
+        List<ServiceAppResource> servicesProduced;
+        lock (_lockObj)
+        {
+            servicesProduced = _appResources.OfType<ServiceAppResource>().Where(r => r.ModelResource == modelResource).ToList();
+        }
+
         foreach (var sp in servicesProduced)
         {
             // Projects/Executables have their ports auto-allocated; the the port specified by the EndpointAnnotation
@@ -881,10 +906,10 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
     {
         try
         {
-            var resourcesToCreate = _appResources.Select(r => r.DcpResource).OfType<RT>();
-            if (!resourcesToCreate.Any())
+            List<RT> resourcesToCreate;
+            lock (_lockObj)
             {
-                return;
+                resourcesToCreate = _appResources.Select(r => r.DcpResource).OfType<RT>().ToList();
             }
 
             // CONSIDER batched creation
@@ -903,10 +928,10 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 
     private async Task DeleteResourcesAsync<RT>(string resourceType, CancellationToken cancellationToken) where RT : CustomResource
     {
-        var resourcesToDelete = _appResources.Select(r => r.DcpResource).OfType<RT>();
-        if (!resourcesToDelete.Any())
+        List<RT> resourcesToDelete;
+        lock (_lockObj)
         {
-            return;
+            resourcesToDelete = _appResources.Select(r => r.DcpResource).OfType<RT>().ToList();
         }
 
         foreach (var res in resourcesToDelete)
