@@ -13,6 +13,7 @@ using Azure.ResourceManager.Resources.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Azure.Security.KeyVault.Secrets;
+using Aspire.Hosting.Dashboard;
 
 namespace Aspire.Hosting.Azure.Provisioning;
 
@@ -57,7 +58,6 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
     public override async Task GetOrCreateResourceAsync(AzureBicepResource resource, ProvisioningContext context, CancellationToken cancellationToken)
     {
         PopulateWellKnownParameters(resource, context);
-
         var azPath = FindFullPathFromPath("az") ??
             throw new InvalidOperationException("Azure CLI not found in PATH");
 
@@ -66,6 +66,8 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
         var path = template.Path;
 
         KeyVaultResource? keyVault = null;
+        var resourceLogger = resource.Annotations.OfType<DashboardLoggerAnnotation>().Single();
+        var stateChange = resource.Annotations.OfType<ResourceStateChangedAnnotation>().Single();
 
         if (resource.Parameters.ContainsKey(AzureBicepResource.KnownParameters.KeyVaultName))
         {
@@ -78,6 +80,7 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
             {
                 if (kv.Data.Tags.TryGetValue("aspire-secret-store", out var secretStore) && secretStore == resource.Name)
                 {
+                    resourceLogger.LogInformation("Found key vault {vaultName} for resource {resource} in {location}...", kv.Data.Name, resource.Name, context.Location);
                     logger.LogInformation("Found key vault {vaultName} for resource {resource} in {location}...", kv.Data.Name, resource.Name, context.Location);
 
                     keyVault = kv;
@@ -91,6 +94,7 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
                 // Follow this link for more information: https://go.microsoft.com/fwlink/?linkid=2147742
                 var vaultName = $"v{Guid.NewGuid().ToString("N")[0..20]}";
 
+                resourceLogger.LogInformation("Creating key vault {vaultName} for resource {resource} in {location}...", vaultName, resource.Name, context.Location);
                 logger.LogInformation("Creating key vault {vaultName} for resource {resource} in {location}...", vaultName, resource.Name, context.Location);
 
                 var properties = new KeyVaultProperties(context.Subscription.Data.TenantId!.Value, new KeyVaultSku(KeyVaultSkuFamily.A, KeyVaultSkuName.Standard))
@@ -104,6 +108,7 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
                 var kvOperation = await keyVaults.CreateOrUpdateAsync(WaitUntil.Completed, vaultName, kvParameters, cancellationToken).ConfigureAwait(false);
                 keyVault = kvOperation.Value;
 
+                resourceLogger.LogInformation("Key vault {vaultName} created.", keyVault.Data.Name);
                 logger.LogInformation("Key vault {vaultName} created.", keyVault.Data.Name);
 
                 // Key Vault Administrator
@@ -122,7 +127,7 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
         {
             Arguments = $"bicep build --file \"{path}\" --stdout",
             OnOutputData = data => armTemplateContents.AppendLine(data),
-            OnErrorData = data => logger.Log(LogLevel.Error, 0, data, null, (s, e) => s),
+            OnErrorData = line => resourceLogger.Log(LogLevel.Error, 0, line, null, (s, e) => s),
         };
 
         if (!await ExecuteCommand(templateSpec).ConfigureAwait(false))
@@ -132,6 +137,7 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
 
         var deployments = context.ResourceGroup.GetArmDeployments();
 
+        resourceLogger.LogInformation("Deploying {Name} to {ResourceGroup}", resource.Name, context.ResourceGroup.Data.Name);
         logger.LogInformation("Deploying {Name} to {ResourceGroup}", resource.Name, context.ResourceGroup.Data.Name);
 
         // Convert the parameters to a JSON object
@@ -160,86 +166,109 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
             };
         }
 
-        var sw = Stopwatch.StartNew();
-        var operation = await deployments.CreateOrUpdateAsync(WaitUntil.Completed, resource.Name, new ArmDeploymentContent(new(ArmDeploymentMode.Incremental)
+        try
         {
-            Template = BinaryData.FromString(armTemplateContents.ToString()),
-            Parameters = BinaryData.FromObjectAsJson(parameters),
-            DebugSettingDetailLevel = "RequestContent, ResponseContent",
-        }),
-        cancellationToken).ConfigureAwait(false);
+            var sw = Stopwatch.StartNew();
+            var operation = await deployments.CreateOrUpdateAsync(WaitUntil.Completed, resource.Name, new ArmDeploymentContent(new(ArmDeploymentMode.Incremental)
+            {
+                Template = BinaryData.FromString(armTemplateContents.ToString()),
+                Parameters = BinaryData.FromObjectAsJson(parameters),
+                DebugSettingDetailLevel = "RequestContent, ResponseContent",
+            }),
+            cancellationToken).ConfigureAwait(false);
 
-        sw.Stop();
-        logger.LogInformation("Deployment of {Name} to {ResourceGroup} took {Elapsed}", resource.Name, context.ResourceGroup.Data.Name, sw.Elapsed);
+            sw.Stop();
 
-        var deployment = operation.Value;
+            resourceLogger.LogInformation("Deployment of {Name} to {ResourceGroup} took {Elapsed}", resource.Name, context.ResourceGroup.Data.Name, sw.Elapsed);
+            logger.LogInformation("Deployment of {Name} to {ResourceGroup} took {Elapsed}", resource.Name, context.ResourceGroup.Data.Name, sw.Elapsed);
+            var deployment = operation.Value;
 
-        var outputs = deployment.Data.Properties.Outputs;
+            var outputs = deployment.Data.Properties.Outputs;
 
-        if (deployment.Data.Properties.ProvisioningState == ResourcesProvisioningState.Succeeded)
-        {
-            template.Dispose();
+            if (deployment.Data.Properties.ProvisioningState == ResourcesProvisioningState.Succeeded)
+            {
+                template.Dispose();
+            }
+            else
+            {
+                var text = $"Deployment of {resource.Name} to {context.ResourceGroup.Data.Name} failed with {deployment.Data.Properties.ProvisioningState}";
+                var ex = new InvalidOperationException(text);
+
+                resource.ProvisionTask?.TrySetException(ex);
+
+                resourceLogger.LogError(ex, "Failed to deploy {Name} to {ResourceGroup}", resource.Name, context.ResourceGroup.Data.Name);
+
+                throw ex;
+            }
+
+            // e.g. {  "sqlServerName": { "type": "String", "value": "<value>" }}
+
+            var outputObj = outputs?.ToObjectFromJson<JsonObject>();
+
+            if (outputObj is not null)
+            {
+                // TODO: Make this more robust
+                // Cache contents by their checksum so we don't reuse changed outputs from potentially changed templates
+                // var checkSum = resource.GetChecksum();
+
+                var configOutputs = context.UserSecrets
+                    .Prop("Azure")
+                    .Prop("Deployments")
+                    .Prop(resource.Name)
+                    // .Prop(checkSum)
+                    .Prop("Outputs");
+
+                foreach (var item in outputObj.AsObject())
+                {
+                    // TODO: Handle complex output types
+                    // Populate the resource outputs
+                    resource.Outputs[item.Key] = item.Value?.Prop("value").ToString();
+                }
+
+                foreach (var item in resource.Outputs)
+                {
+                    // Save them to configuration
+                    configOutputs[item.Key] = resource.Outputs[item.Key];
+                }
+            }
+
+            // Populate secret outputs from key vault (if any)
+            if (keyVault is not null)
+            {
+                var configOutputs = context.UserSecrets
+                    .Prop("Azure")
+                    .Prop("Deployments")
+                    .Prop(resource.Name)
+                    // .Prop(checkSum)
+                    .Prop("SecretOutputs");
+
+                var client = new SecretClient(keyVault.Data.Properties.VaultUri, context.Credential);
+
+                await foreach (var item in keyVault.GetKeyVaultSecrets().GetAllAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
+                {
+                    var response = await client.GetSecretAsync(item.Data.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    var secret = response.Value;
+                    resource.SecretOutputs[item.Data.Name] = secret.Value;
+                }
+
+                foreach (var item in resource.SecretOutputs)
+                {
+                    // Save them to configuration
+                    configOutputs[item.Key] = resource.SecretOutputs[item.Key];
+                }
+            }
+
+            stateChange.ChangeState("Running");
+
+            resource.ProvisionTask?.TrySetResult();
         }
-        else
+        catch (Exception ex)
         {
-            throw new InvalidOperationException($"Deployment of {resource.Name} to {context.ResourceGroup.Data.Name} failed with {deployment.Data.Properties.ProvisioningState}");
-        }
+            stateChange.ChangeState("FailedToStart");
 
-        // e.g. {  "sqlServerName": { "type": "String", "value": "<value>" }}
+            resource.ProvisionTask?.TrySetException(ex);
 
-        var outputObj = outputs?.ToObjectFromJson<JsonObject>();
-
-        if (outputObj is not null)
-        {
-            // TODO: Make this more robust
-            // Cache contents by their checksum so we don't reuse changed outputs from potentially changed templates
-            // var checkSum = resource.GetChecksum();
-
-            var configOutputs = context.UserSecrets
-                .Prop("Azure")
-                .Prop("Deployments")
-                .Prop(resource.Name)
-                // .Prop(checkSum)
-                .Prop("Outputs");
-
-            foreach (var item in outputObj.AsObject())
-            {
-                // TODO: Handle complex output types
-                // Populate the resource outputs
-                resource.Outputs[item.Key] = item.Value?.Prop("value").ToString();
-            }
-
-            foreach (var item in resource.Outputs)
-            {
-                // Save them to configuration
-                configOutputs[item.Key] = resource.Outputs[item.Key];
-            }
-        }
-
-        // Populate secret outputs from key vault (if any)
-        if (keyVault is not null)
-        {
-            var configOutputs = context.UserSecrets
-                .Prop("Azure")
-                .Prop("Deployments")
-                .Prop(resource.Name)
-                // .Prop(checkSum)
-                .Prop("SecretOutputs");
-
-            var client = new SecretClient(keyVault.Data.Properties.VaultUri, context.Credential);
-
-            await foreach (var item in keyVault.GetKeyVaultSecrets().GetAllAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
-            {
-                var response = await client.GetSecretAsync(item.Data.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
-                var secret = response.Value;
-                resource.SecretOutputs[item.Data.Name] = secret.Value;
-            }
-
-            foreach (var item in resource.SecretOutputs)
-            {
-                // Save them to configuration
-                configOutputs[item.Key] = resource.SecretOutputs[item.Key];
-            }
+            resourceLogger.LogError(ex, "Failed to deploy {Name} to {ResourceGroup}", resource.Name, context.ResourceGroup.Data.Name);
         }
     }
 

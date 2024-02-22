@@ -40,6 +40,11 @@ public class AzureCosmosDBResource(string name, string? connectionString)
     /// </summary>
     public IReadOnlyCollection<AzureCosmosDBDatabaseResource> Databases => _databases;
 
+    /// <summary>
+    /// 
+    /// </summary>
+    public TaskCompletionSource? ProvisionTask { get; set; }
+
     private int GetEmulatorPort(string endpointName) =>
         Annotations
             .OfType<AllocatedEndpointAnnotation>()

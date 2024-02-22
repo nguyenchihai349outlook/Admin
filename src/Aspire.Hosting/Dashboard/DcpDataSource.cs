@@ -20,7 +20,7 @@ namespace Aspire.Hosting.Dashboard;
 /// DCP data is obtained from <see cref="KubernetesService"/>. <see cref="DistributedApplicationModel"/>
 /// is also used for mapping some project data.
 /// </remarks>
-internal sealed class DcpDataSource
+internal sealed partial class DcpDataSource
 {
     private readonly IKubernetesService _kubernetesService;
     private readonly DistributedApplicationModel _applicationModel;
@@ -48,6 +48,21 @@ internal sealed class DcpDataSource
         _logger = loggerFactory.CreateLogger<DcpDataSource>();
 
         var semaphore = new SemaphoreSlim(1);
+
+        Task.Run(async () =>
+        {
+            foreach (var r in applicationModel.Resources)
+            {
+                if (r.IsContainer() || r is ExecutableResource || r is ProjectResource)
+                {
+                    continue;
+                }
+
+                // These are the resources not handled by DCP, so we just send them to the dashboard
+                await onResourceChanged(CreateSnapshot(r), ResourceSnapshotChangeType.Upsert).ConfigureAwait(false);
+            }
+        },
+        cancellationToken);
 
         Task.Run(
             async () =>
@@ -102,6 +117,65 @@ internal sealed class DcpDataSource
 
             return false;
         }
+    }
+
+    private ResourceSnapshot CreateSnapshot(IResource r)
+    {
+        if (r.TryGetLastAnnotation<ConnectionStringRedirectAnnotation>(out var connectionStringRedirectAnnotation))
+        {
+            r = connectionStringRedirectAnnotation.Resource;
+        }
+
+        static ImmutableArray<EndpointSnapshot> CreateEndpoints(IResource r)
+            => r.Annotations.OfType<EndpointAnnotation>()
+                            .Where(e => e.Port is not null)
+                            .Select(e => new EndpointSnapshot($"{e.UriScheme}://localhost:{e.Port}", $"{e.UriScheme}://localhost:{e.Port}"))
+                            .ToImmutableArray();
+
+        var sc = r.Annotations.OfType<ResourceStateChangedAnnotation>().SingleOrDefault();
+
+        var endpoints = CreateEndpoints(r);
+        var snapshot = new GenericResourceSnapshot(r)
+        {
+            Uid = r.Name,
+            CreationTimeStamp = DateTime.UtcNow,
+            Name = r.Name,
+            DisplayName = r.Name,
+            Endpoints = endpoints,
+            Environment = [],
+            ExitCode = null,
+            ExpectedEndpointsCount = endpoints.Length,
+            Services = [],
+            State = sc?.State ?? "Running"
+        };
+
+        if (sc is not null)
+        {
+            sc.StateChanged += () =>
+            {
+                var endpoints = CreateEndpoints(r);
+                Task.Run(async () =>
+                {
+                    var snapshot = new GenericResourceSnapshot(r)
+                    {
+                        Uid = r.Name,
+                        CreationTimeStamp = DateTime.UtcNow,
+                        Name = r.Name,
+                        DisplayName = r.Name,
+                        Endpoints = endpoints,
+                        Environment = [],
+                        ExitCode = null,
+                        ExpectedEndpointsCount = endpoints.Length,
+                        Services = [],
+                        State = sc.State
+                    };
+
+                    await _onResourceChanged(snapshot, ResourceSnapshotChangeType.Upsert).ConfigureAwait(false);
+                });
+            };
+        }
+
+        return snapshot;
     }
 
     private async Task ProcessResourceChange<T>(WatchEventType watchEventType, T resource, ConcurrentDictionary<string, T> resourceByName, string resourceKind, Func<T, ResourceSnapshot> snapshotFactory) where T : CustomResource

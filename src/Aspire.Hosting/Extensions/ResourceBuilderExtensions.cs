@@ -203,25 +203,32 @@ public static class ResourceBuilderExtensions
                 return;
             }
 
-            var connectionString = resource.GetConnectionString();
-
-            if (string.IsNullOrEmpty(connectionString))
+            try
             {
-                if (optional)
+                var connectionString = resource.GetConnectionString();
+
+                if (string.IsNullOrEmpty(connectionString))
                 {
-                    // This is an optional connection string, so we can just return.
-                    return;
+                    if (optional)
+                    {
+                        // This is an optional connection string, so we can just return.
+                        return;
+                    }
+
+                    throw new DistributedApplicationException($"A connection string for '{resource.Name}' could not be retrieved.");
                 }
 
-                throw new DistributedApplicationException($"A connection string for '{resource.Name}' could not be retrieved.");
-            }
+                if (builder.Resource is ContainerResource)
+                {
+                    connectionString = HostNameResolver.ReplaceLocalhostWithContainerHost(connectionString, builder.ApplicationBuilder.Configuration);
+                }
 
-            if (builder.Resource is ContainerResource)
+                context.EnvironmentVariables[connectionStringName] = connectionString;
+            }
+            catch
             {
-                connectionString = HostNameResolver.ReplaceLocalhostWithContainerHost(connectionString, builder.ApplicationBuilder.Configuration);
+                // 
             }
-
-            context.EnvironmentVariables[connectionStringName] = connectionString;
         });
     }
 
@@ -359,7 +366,7 @@ public static class ResourceBuilderExtensions
     /// <param name="callback">Callback that modifies the endpoint.</param>
     /// <param name="createIfNotExists">Create endpoint if it does not exist.</param>
     /// <returns></returns>
-    public static IResourceBuilder<T> WithEndpoint<T>(this IResourceBuilder<T> builder, string endpointName, Action<EndpointAnnotation> callback, bool createIfNotExists = true) where T: IResourceWithEndpoints
+    public static IResourceBuilder<T> WithEndpoint<T>(this IResourceBuilder<T> builder, string endpointName, Action<EndpointAnnotation> callback, bool createIfNotExists = true) where T : IResourceWithEndpoints
     {
         var endpoint = builder.Resource.Annotations
             .OfType<EndpointAnnotation>()

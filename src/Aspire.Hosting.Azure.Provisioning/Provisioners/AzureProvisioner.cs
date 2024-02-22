@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure.Bicep;
 using Aspire.Hosting.Azure.Provisioning;
+using Aspire.Hosting.Dashboard;
 using Aspire.Hosting.Lifecycle;
 using Azure;
 using Azure.Core;
@@ -53,32 +54,36 @@ internal sealed class AzureProvisioner(
         }
     }
 
-    public async Task BeforeStartAsync(DistributedApplicationModel appModel, CancellationToken cancellationToken = default)
+    public Task BeforeStartAsync(DistributedApplicationModel appModel, CancellationToken cancellationToken = default)
     {
         // TODO: Make this more general purpose
         if (executionContext.Operation == DistributedApplicationOperation.Publish)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         var azureResources = appModel.Resources.Select(PromoteAzureResourceFromAnnotation).OfType<IAzureResource>();
         if (!azureResources.OfType<IAzureResource>().Any())
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        try
+        foreach (var r in azureResources)
         {
-            await ProvisionAzureResources(configuration, environment, logger, azureResources, cancellationToken).ConfigureAwait(false);
+            r.ProvisionTask = new();
+            r.Annotations.Add(new ResourceStateChangedAnnotation("Starting"));
+            r.Annotations.Add(new DashboardLoggerAnnotation());
         }
-        catch (MissingConfigurationException ex)
-        {
-            logger.LogWarning(ex, "Required configuration is missing.");
-        }
+
+        // Don't wait
+        _ = ProvisionAzureResources(configuration, environment, logger, azureResources, cancellationToken);
+        return Task.CompletedTask;
     }
 
     private async Task ProvisionAzureResources(IConfiguration configuration, IHostEnvironment environment, ILogger<AzureProvisioner> logger, IEnumerable<IAzureResource> azureResources, CancellationToken cancellationToken)
     {
+        await Task.Yield();
+
         var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions()
         {
             ExcludeManagedIdentityCredential = true,
@@ -224,24 +229,40 @@ internal sealed class AzureProvisioner(
 
             var provisioner = SelectProvisioner(resource);
 
+            var stateChange = resource.Annotations.OfType<ResourceStateChangedAnnotation>().Single();
+            var resourceLogger = resource.Annotations.OfType<DashboardLoggerAnnotation>().Single();
+
             if (provisioner is null)
             {
+                stateChange.ChangeState("Running");
+                resource.ProvisionTask?.TrySetResult();
+
+                resourceLogger.LogWarning("No provisioner found for {resourceType} skipping.", resource.GetType().Name);
                 logger.LogWarning("No provisioner found for {resourceType} skipping.", resource.GetType().Name);
                 continue;
             }
 
             if (!provisioner.ShouldProvision(configuration, resource))
             {
+                resource.ProvisionTask?.TrySetResult();
+
+                resourceLogger.LogInformation("Skipping {resourceName} because it is not configured to be provisioned.", resource.Name);
                 logger.LogInformation("Skipping {resourceName} because it is not configured to be provisioned.", resource.Name);
                 continue;
             }
 
             if (provisioner.ConfigureResource(configuration, resource))
             {
+                resource.ProvisionTask?.TrySetResult();
+                stateChange.ChangeState("Running");
+
+                resourceLogger.LogInformation("Using connection information stored in user secrets for {resourceName}.", resource.Name);
                 logger.LogInformation("Using connection information stored in user secrets for {resourceName}.", resource.Name);
 
                 continue;
             }
+
+            stateChange.ChangeState("Provisioning");
 
             subscription ??= await subscriptionLazy.Value.ConfigureAwait(false);
 
@@ -268,6 +289,11 @@ internal sealed class AzureProvisioner(
 
             // Suppress throwing so that we can save the user secrets even if the task fails
             await task.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
+            foreach (var r in azureResources)
+            {
+                r.ProvisionTask?.TrySetResult();
+            }
 
             // If we created any resources then save the user secrets
             if (userSecretsPath is not null)

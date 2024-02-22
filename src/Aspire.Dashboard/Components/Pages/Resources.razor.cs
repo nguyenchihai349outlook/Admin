@@ -39,7 +39,7 @@ public partial class Resources : ComponentBase, IDisposable
         _visibleResourceTypes = new HashSet<string>(_allResourceTypes, StringComparers.ResourceType);
     }
 
-    private bool Filter(ResourceViewModel resource) => _visibleResourceTypes.Contains(resource.ResourceType) && (_filter.Length == 0 || resource.MatchesFilter(_filter));
+    private bool Filter(ResourceViewModel resource) => (_filter.Length == 0 || resource.MatchesFilter(_filter));
 
     protected void OnResourceTypeVisibilityChanged(string resourceType, bool isVisible)
     {

@@ -43,6 +43,11 @@ public class AzureBicepResource(string name, string? templateFile = null, string
     public Dictionary<string, string?> SecretOutputs { get; } = [];
 
     /// <summary>
+    /// 
+    /// </summary>
+    public TaskCompletionSource? ProvisionTask { get; set; }
+
+    /// <summary>
     /// Gets the path to the bicep file. If the template is a string or embedded resource, it will be written to a temporary file.
     /// </summary>
     /// <param name="directory">The directory where the bicep file will be written to (if it's a temporary file)</param>
@@ -273,6 +278,9 @@ public class BicepSecretOutputReference(string name, AzureBicepResource resource
     {
         get
         {
+            // ZOMG
+            Resource.ProvisionTask?.Task.Wait();
+
             if (!Resource.SecretOutputs.TryGetValue(Name, out var value))
             {
                 throw new InvalidOperationException($"No secret output for {Name}");
@@ -311,6 +319,9 @@ public class BicepOutputReference(string name, AzureBicepResource resource)
     {
         get
         {
+            // ZOMG
+            Resource.ProvisionTask?.Task.Wait();
+
             if (!Resource.Outputs.TryGetValue(Name, out var value))
             {
                 throw new InvalidOperationException($"No output for {Name}");

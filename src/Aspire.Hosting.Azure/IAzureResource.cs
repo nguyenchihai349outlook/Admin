@@ -9,4 +9,8 @@ namespace Aspire.Hosting.ApplicationModel;
 /// </summary>
 public interface IAzureResource : IResource
 {
+    /// <summary>
+    /// 
+    /// </summary>
+    TaskCompletionSource? ProvisionTask { get; set; }
 }

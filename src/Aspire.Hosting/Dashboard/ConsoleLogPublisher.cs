@@ -19,6 +19,7 @@ internal sealed class ConsoleLogPublisher(ResourcePublisher resourcePublisher)
         {
             ExecutableSnapshot executable => SubscribeExecutable(executable),
             ContainerSnapshot container => SubscribeContainer(container),
+            GenericResourceSnapshot snapshot => snapshot.GetLogsEnumerable(),
             _ => throw new NotSupportedException($"Unsupported resource type {resource.GetType()}.")
         };
 
