@@ -73,6 +73,7 @@ internal sealed class AzureProvisioner(
             r.ProvisionTask = new();
             r.Annotations.Add(new ResourceStateChangedAnnotation("Starting"));
             r.Annotations.Add(new DashboardLoggerAnnotation());
+            r.Annotations.Add(new DashboardPropertiesAnnotation());
         }
 
         // Don't wait
@@ -84,28 +85,34 @@ internal sealed class AzureProvisioner(
     {
         await Task.Yield();
 
-        var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions()
+        var credentialLazy = new Lazy<TokenCredential>(() =>
         {
-            ExcludeManagedIdentityCredential = true,
-            ExcludeWorkloadIdentityCredential = true,
-            ExcludeAzurePowerShellCredential = true,
-            CredentialProcessTimeout = TimeSpan.FromSeconds(15)
+            var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions()
+            {
+                ExcludeManagedIdentityCredential = true,
+                ExcludeWorkloadIdentityCredential = true,
+                ExcludeAzurePowerShellCredential = true,
+                CredentialProcessTimeout = TimeSpan.FromSeconds(15)
+            });
+
+            return credential;
         });
 
-        var subscriptionId = _options.SubscriptionId ?? throw new MissingConfigurationException("An azure subscription id is required. Set the Azure:SubscriptionId configuration value.");
-        var location = _options.Location switch
+        var armClientLazy = new Lazy<ArmClient>(() =>
         {
-            null => throw new MissingConfigurationException("An azure location/region is required. Set the Azure:Location configuration value."),
-            string loc => new AzureLocation(loc)
-        };
+            var credential = credentialLazy.Value;
+            var subscriptionId = _options.SubscriptionId ?? throw new MissingConfigurationException("An azure subscription id is required. Set the Azure:SubscriptionId configuration value.");
 
-        var armClient = new ArmClient(credential, subscriptionId);
+            var armClient = new ArmClient(credential, subscriptionId);
+
+            return armClient;
+        });
 
         var subscriptionLazy = new Lazy<Task<SubscriptionResource>>(async () =>
         {
             logger.LogInformation("Getting default subscription...");
 
-            var value = await armClient.GetDefaultSubscriptionAsync(cancellationToken).ConfigureAwait(false);
+            var value = await armClientLazy.Value.GetDefaultSubscriptionAsync(cancellationToken).ConfigureAwait(false);
 
             logger.LogInformation("Default subscription: {name} ({subscriptionId})", value.Data.DisplayName, value.Id);
 
@@ -114,6 +121,11 @@ internal sealed class AzureProvisioner(
 
         Lazy<Task<(ResourceGroupResource, AzureLocation)>> resourceGroupAndLocationLazy = new(async () =>
         {
+            if (string.IsNullOrEmpty(_options.Location))
+            {
+                throw new MissingConfigurationException("An azure location/region is required. Set the Azure:Location configuration value.");
+            }
+
             var unique = $"{Environment.MachineName.ToLowerInvariant()}-{environment.ApplicationName.ToLowerInvariant()}";
             // Name of the resource group to create based on the machine name and application name
             var (resourceGroupName, createIfAbsent) = _options.ResourceGroup switch
@@ -157,7 +169,7 @@ internal sealed class AzureProvisioner(
             return (resourceGroup, location);
         });
 
-        var principalLazy = new Lazy<Task<UserPrincipal>>(async () => await GetUserPrincipalAsync(credential, cancellationToken).ConfigureAwait(false));
+        var principalLazy = new Lazy<Task<UserPrincipal>>(async () => await GetUserPrincipalAsync(credentialLazy.Value, cancellationToken).ConfigureAwait(false));
 
         var resourceMapLazy = new Lazy<Task<Dictionary<string, ArmResource>>>(async () =>
         {
@@ -231,6 +243,7 @@ internal sealed class AzureProvisioner(
 
             var stateChange = resource.Annotations.OfType<ResourceStateChangedAnnotation>().Single();
             var resourceLogger = resource.Annotations.OfType<DashboardLoggerAnnotation>().Single();
+            var properties = resource.Annotations.OfType<DashboardPropertiesAnnotation>().Single();
 
             if (provisioner is null)
             {
@@ -262,25 +275,43 @@ internal sealed class AzureProvisioner(
                 continue;
             }
 
-            stateChange.ChangeState("Provisioning");
-
-            subscription ??= await subscriptionLazy.Value.ConfigureAwait(false);
-
-            if (resourceGroup is null)
+            try
             {
-                (resourceGroup, location) = await resourceGroupAndLocationLazy.Value.ConfigureAwait(false);
+                subscription ??= await subscriptionLazy.Value.ConfigureAwait(false);
+
+                AzureLocation location = default;
+
+                if (resourceGroup is null)
+                {
+                    (resourceGroup, location) = await resourceGroupAndLocationLazy.Value.ConfigureAwait(false);
+                }
+
+                resourceMap ??= await resourceMapLazy.Value.ConfigureAwait(false);
+                principal ??= await principalLazy.Value.ConfigureAwait(false);
+                provisioningContext ??= new ProvisioningContext(credentialLazy.Value, armClientLazy.Value, subscription, resourceGroup, resourceMap, location, principal, userSecrets);
+
+                properties.Properties["SubscriptionId"] = subscription.Id.ToString();
+                properties.Properties["ResourceGroup"] = resourceGroup.Data.Name;
+                properties.Properties["Location"] = location.Name;
+                properties.Properties["PrincipalId"] = principal.Id.ToString();
+
+                stateChange.ChangeState("Provisioning");
+
+                var task = provisioner.GetOrCreateResourceAsync(
+                        resource,
+                        provisioningContext,
+                        cancellationToken);
+
+                tasks.Add(task);
             }
+            catch (Exception ex)
+            {
+                resourceLogger.LogError(ex, "Error provisioning {resourceName}.", resource.Name);
 
-            resourceMap ??= await resourceMapLazy.Value.ConfigureAwait(false);
-            principal ??= await principalLazy.Value.ConfigureAwait(false);
-            provisioningContext ??= new ProvisioningContext(credential, armClient, subscription, resourceGroup, resourceMap, location, principal, userSecrets);
+                stateChange.ChangeState("FailedToStart");
 
-            var task = provisioner.GetOrCreateResourceAsync(
-                    resource,
-                    provisioningContext,
-                    cancellationToken);
-
-            tasks.Add(task);
+                resource.ProvisionTask?.TrySetException(ex);
+            }
         }
 
         if (tasks.Count > 0)
@@ -324,7 +355,7 @@ internal sealed class AzureProvisioner(
                     continue;
                 }
 
-                var response = await armClient.GetGenericResources().GetAsync(sa.Id, cancellationToken).ConfigureAwait(false);
+                var response = await armClientLazy.Value.GetGenericResources().GetAsync(sa.Id, cancellationToken).ConfigureAwait(false);
 
                 logger.LogInformation("Deleting unused resource {keyVaultName} which maps to resource name {name}.", sa.Id, name);
 

@@ -52,6 +52,6 @@ public class DashboardLoggerAnnotation : IResourceAnnotation, ILogger
     /// <param name="formatter"></param>
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
-        LogStream.Writer.TryWrite((formatter(state, exception), logLevel >= LogLevel.Error));
+        LogStream.Writer.TryWrite((formatter(state, exception) + (exception is null ? "" : $"\n{exception}"), logLevel >= LogLevel.Error));
     }
 }

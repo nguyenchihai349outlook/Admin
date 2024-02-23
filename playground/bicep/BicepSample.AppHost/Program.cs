@@ -5,9 +5,12 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 builder.AddAzureProvisioning();
 
-var redis = builder.AddRedis("redis").AsAzureRedis();
+var sb = builder.AddAzureServiceBus("sb", queueNames: ["q2"]);
+
+var redis = builder.AddRedis("redis");
 
 builder.AddProject<Projects.BicepSample_ApiService>("api")
+       .WithReference(sb)
        .WithReference(redis);
 
 // This project is only added in playground projects to support development/debugging

@@ -1,19 +1,21 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dashboard;
 using Aspire.Hosting.Dcp.Process;
 using Azure;
-using Azure.ResourceManager.KeyVault.Models;
+using Azure.Core;
 using Azure.ResourceManager.KeyVault;
+using Azure.ResourceManager.KeyVault.Models;
 using Azure.ResourceManager.Resources;
 using Azure.ResourceManager.Resources.Models;
+using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Azure.Security.KeyVault.Secrets;
-using Aspire.Hosting.Dashboard;
 
 namespace Aspire.Hosting.Azure.Provisioning;
 
@@ -31,6 +33,8 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
             return false;
         }
 
+        var properties = resource.Annotations.OfType<DashboardPropertiesAnnotation>().Single();
+
         // TODO: Cache contents by their checksum so we don't reuse changed outputs from potentially changed templates
 
         //var checkSum = resource.GetChecksum();
@@ -42,14 +46,33 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
         //    return false;
         //}
 
+        // Show resource ids in the dashboard
+        foreach (var item in section.GetSection("Resources").GetChildren())
+        {
+            if (!ResourceIdentifier.TryParse(item.Value, out var resourceId) || resourceId is null)
+            {
+                continue;
+            }
+
+            var resourceName = resourceId.Name ?? "";
+
+            properties.Properties[$"{resourceName}:SubscriptionId"] = resourceId.SubscriptionId ?? "";
+            properties.Properties[$"{resourceName}:ResourceGroup"] = resourceId.ResourceGroupName ?? "";
+            properties.Properties[$"{resourceName}:ResourceType"] = resourceId.ResourceType.Type;
+        }
+
         foreach (var item in section.GetSection("Outputs").GetChildren())
         {
             resource.Outputs[item.Key] = item.Value;
+
+            properties.Properties["Outputs:" + item.Key] = item.Value ?? "";
         }
 
         foreach (var item in section.GetSection("SecretOutputs").GetChildren())
         {
             resource.SecretOutputs[item.Key] = item.Value;
+
+            properties.Properties["SecretOutputs:" + item.Key] = item.Value ?? "";
         }
 
         return true;
@@ -204,6 +227,22 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
             // e.g. {  "sqlServerName": { "type": "String", "value": "<value>" }}
 
             var outputObj = outputs?.ToObjectFromJson<JsonObject>();
+
+            if (deployment.Data.Properties.OutputResources.Count > 0)
+            {
+                var deployedResourcesConfig = context.UserSecrets
+                        .Prop("Azure")
+                        .Prop("Deployments")
+                        .Prop(resource.Name)
+                        .Prop("Resources");
+
+                var i = 0;
+                foreach (var r in deployment.Data.Properties.OutputResources)
+                {
+                    deployedResourcesConfig[i.ToString(CultureInfo.InvariantCulture)] = r.Id.ToString();
+                    i++;
+                }
+            }
 
             if (outputObj is not null)
             {

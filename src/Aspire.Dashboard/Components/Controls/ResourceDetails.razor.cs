@@ -62,10 +62,8 @@ public partial class ResourceDetails
             new KnownProperty(KnownProperties.Resource.State, Loc[Resources.Resources.ResourcesDetailsStateProperty]),
             new KnownProperty(KnownProperties.Resource.CreateTime, Loc[Resources.Resources.ResourcesDetailsStartTimeProperty]),
             new KnownProperty(KnownProperties.Resource.ExitCode, Loc[Resources.Resources.ResourcesDetailsExitCodeProperty]),
-            new KnownProperty("Value", "Value"),
-            new KnownProperty("ConnectionString", "ConnectionString")
-
         ];
+
         _projectProperties =
         [
             .. _resourceProperties,

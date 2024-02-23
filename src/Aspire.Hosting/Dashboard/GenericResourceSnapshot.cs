@@ -12,14 +12,12 @@ internal class GenericResourceSnapshot(IResource r) : ResourceSnapshot
 
     protected override IEnumerable<(string Key, Value Value)> GetProperties()
     {
-        //if (r is IResourceWithConnectionString connectionString)
-        //{
-        //    yield return ("ConnectionString", Value.ForString(connectionString.GetConnectionString()));
-        //}
-
-        if (r is ParameterResource p)
+        if (r.TryGetLastAnnotation<DashboardPropertiesAnnotation>(out var properties))
         {
-            yield return ("Value", Value.ForString(p.Value));
+            foreach (var (key, value) in properties.Properties)
+            {
+                yield return (key, Value.ForString(value));
+            }
         }
 
         yield break;
@@ -29,6 +27,7 @@ internal class GenericResourceSnapshot(IResource r) : ResourceSnapshot
     {
         if (!r.TryGetLastAnnotation<DashboardLoggerAnnotation>(out var annotation))
         {
+            yield return [("No logs available", false)];
             yield break;
         }
 
