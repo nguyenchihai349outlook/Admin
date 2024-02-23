@@ -48,18 +48,33 @@ internal sealed partial class DcpDataSource
         _logger = loggerFactory.CreateLogger<DcpDataSource>();
 
         var semaphore = new SemaphoreSlim(1);
+        // Initial
+        var tcs = new TaskCompletionSource();
 
         Task.Run(async () =>
         {
-            foreach (var r in applicationModel.Resources)
+            try
             {
-                if (r.IsContainer() || r is ExecutableResource || r is ProjectResource)
+                foreach (var r in applicationModel.Resources)
                 {
-                    continue;
+                    if (r.IsContainer() || r is ExecutableResource || r is ProjectResource)
+                    {
+                        var ss = CreateKnownSnapshot(r);
+                        if (ss is not null)
+                        {
+                            await onResourceChanged(ss, ResourceSnapshotChangeType.Upsert).ConfigureAwait(false);
+                        }
+                    }
+                    else
+                    {
+                        // These are the resources not handled by DCP, so we just send them to the dashboard
+                        await onResourceChanged(CreateSnapshot(r), ResourceSnapshotChangeType.Upsert).ConfigureAwait(false);
+                    }
                 }
-
-                // These are the resources not handled by DCP, so we just send them to the dashboard
-                await onResourceChanged(CreateSnapshot(r), ResourceSnapshotChangeType.Upsert).ConfigureAwait(false);
+            }
+            finally
+            {
+                tcs.TrySetResult();
             }
         },
         cancellationToken);
@@ -67,6 +82,9 @@ internal sealed partial class DcpDataSource
         Task.Run(
             async () =>
             {
+                // Wait for the initial snapshot to be sent before starting the watch tasks
+                await tcs.Task.ConfigureAwait(false);
+
                 using (semaphore)
                 {
                     await Task.WhenAll(
@@ -117,6 +135,34 @@ internal sealed partial class DcpDataSource
 
             return false;
         }
+    }
+
+    private static ResourceSnapshot? CreateKnownSnapshot(IResource r)
+    {
+        if (r is ProjectResource p)
+        {
+            return new ProjectSnapshot
+            {
+                Name = p.Name,
+                DisplayName = p.Name,
+                Uid = p.Name,
+                CreationTimeStamp = DateTime.UtcNow,
+                ProjectPath = p.GetProjectMetadata().ProjectPath,
+                State = "Starting",
+                ExpectedEndpointsCount = null,
+                Environment = [],
+                Endpoints = [],
+                Services = [],
+                ExecutablePath = null,
+                ExitCode = null,
+                Arguments = null,
+                ProcessId = null,
+                StdErrFile = null,
+                StdOutFile = null,
+                WorkingDirectory = null
+            };
+        }
+        return null;
     }
 
     private ResourceSnapshot CreateSnapshot(IResource r)
@@ -313,6 +359,9 @@ internal sealed partial class DcpDataSource
         string? projectPath = null;
         executable.Metadata.Annotations?.TryGetValue(Executable.CSharpProjectPathAnnotation, out projectPath);
 
+        string? resourceName = null;
+        executable.Metadata.Annotations?.TryGetValue(Executable.ResourceNameAnnotation, out resourceName);
+
         var (endpoints, services) = GetEndpointsAndServices(executable, "Executable", projectPath);
 
         if (projectPath is not null)
@@ -322,8 +371,8 @@ internal sealed partial class DcpDataSource
             // the project.
             return new ProjectSnapshot
             {
-                Name = executable.Metadata.Name,
-                DisplayName = GetDisplayName(executable),
+                Name = resourceName ?? executable.Metadata.Name,
+                DisplayName = resourceName ?? GetDisplayName(executable),
                 Uid = executable.Metadata.Uid,
                 CreationTimeStamp = executable.Metadata.CreationTimestamp?.ToLocalTime(),
                 ExecutablePath = executable.Spec.ExecutablePath,
