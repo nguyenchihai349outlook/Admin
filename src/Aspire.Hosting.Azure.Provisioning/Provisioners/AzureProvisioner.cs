@@ -291,6 +291,7 @@ internal sealed class AzureProvisioner(
                 provisioningContext ??= new ProvisioningContext(credentialLazy.Value, armClientLazy.Value, subscription, resourceGroup, resourceMap, location, principal, userSecrets);
 
                 properties.Properties["SubscriptionId"] = subscription.Id.ToString();
+                properties.Properties["TenantId"] = subscription.Data.TenantId?.ToString() ?? "";
                 properties.Properties["ResourceGroup"] = resourceGroup.Data.Name;
                 properties.Properties["Location"] = location.Name;
                 properties.Properties["PrincipalId"] = principal.Id.ToString();

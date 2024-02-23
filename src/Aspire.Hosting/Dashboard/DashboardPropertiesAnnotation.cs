@@ -11,6 +11,11 @@ namespace Aspire.Hosting.Dashboard;
 public class DashboardPropertiesAnnotation() : IResourceAnnotation
 {
     /// <summary>
+    /// 
+    /// </summary>
+    public List<string> Urls { get; } = [];
+
+    /// <summary>
     /// Gets the properties to be displayed on the dashboard.
     /// </summary>
     public Dictionary<string, string> Properties { get; } = [];

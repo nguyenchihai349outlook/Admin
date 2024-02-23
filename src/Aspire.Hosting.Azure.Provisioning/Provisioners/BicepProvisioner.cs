@@ -46,6 +46,8 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
         //    return false;
         //}
 
+        ResourceIdentifier? firstId = null;
+
         // Show resource ids in the dashboard
         foreach (var item in section.GetSection("Resources").GetChildren())
         {
@@ -54,11 +56,21 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
                 continue;
             }
 
+            firstId ??= resourceId;
+
             var resourceName = resourceId.Name ?? "";
 
             properties.Properties[$"{resourceName}:SubscriptionId"] = resourceId.SubscriptionId ?? "";
             properties.Properties[$"{resourceName}:ResourceGroup"] = resourceId.ResourceGroupName ?? "";
             properties.Properties[$"{resourceName}:ResourceType"] = resourceId.ResourceType.Type;
+        }
+
+        properties.Properties["Source"] = firstId?.ToString() ?? "";
+        var tenant = configuration["Azure:Tenant"];
+
+        if (firstId is not null)
+        {
+            properties.Urls.Add($"http://portal.azure.com/#@{tenant}/resource{firstId}");
         }
 
         foreach (var item in section.GetSection("Outputs").GetChildren())
@@ -230,6 +242,8 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
 
             var outputObj = outputs?.ToObjectFromJson<JsonObject>();
 
+            ResourceIdentifier? firstResource = default;
+
             if (deployment.Data.Properties.OutputResources.Count > 0)
             {
                 var deployedResourcesConfig = context.UserSecrets
@@ -241,6 +255,7 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
                 var i = 0;
                 foreach (var r in deployment.Data.Properties.OutputResources)
                 {
+                    firstResource ??= r.Id;
                     deployedResourcesConfig[i.ToString(CultureInfo.InvariantCulture)] = r.Id.ToString();
                     i++;
                 }
@@ -301,9 +316,30 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
 
             resource.ProvisionTask?.TrySetResult();
 
+            if (firstResource is not null)
+            {
+                resourceProperties.Properties["Source"] = firstResource.ToString();
+            }
+
+            var tenant = context.ArmClient.GetTenants().GetAll(cancellationToken)
+                .Where(t => t.Data.TenantId == context.Subscription.Data.TenantId)
+                .First();
+
+            var az = context.UserSecrets.Prop("Azure");
+
+            az["Tenant"] = tenant.Data.DefaultDomain;
+
+            resourceProperties.Properties["SubscriptionId"] = context.Subscription.Data.Id.ToString() ?? "";
+            resourceProperties.Properties["Tenant"] = tenant.Data.DefaultDomain;
+
             if (resource is IResourceWithConnectionString c)
             {
                 resourceProperties.Properties["ConnectionString"] = c.GetConnectionString() ?? "";
+            }
+
+            if (firstResource is not null)
+            {
+                resourceProperties.Urls.Add($"http://portal.azure.com/#@{tenant.Data.DefaultDomain}/resource{firstResource}");
             }
 
             stateChange.ChangeState("Running");

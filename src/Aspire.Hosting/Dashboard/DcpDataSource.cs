@@ -173,10 +173,17 @@ internal sealed partial class DcpDataSource
         }
 
         static ImmutableArray<EndpointSnapshot> CreateEndpoints(IResource r)
-            => r.Annotations.OfType<EndpointAnnotation>()
-                            .Where(e => e.Port is not null)
-                            .Select(e => new EndpointSnapshot($"{e.UriScheme}://localhost:{e.Port}", $"{e.UriScheme}://localhost:{e.Port}"))
-                            .ToImmutableArray();
+        {
+            var endpoints = r.Annotations.OfType<EndpointAnnotation>()
+                               .Where(e => e.Port is not null)
+                               .Select(e => new EndpointSnapshot($"{e.UriScheme}://localhost:{e.Port}", $"{e.UriScheme}://localhost:{e.Port}"));
+
+            if (!r.TryGetLastAnnotation<DashboardPropertiesAnnotation>(out var props))
+            {
+                return [.. endpoints];
+            }
+            return [.. endpoints, .. props.Urls.Select(u => new EndpointSnapshot(u, u))];
+        }
 
         var sc = r.Annotations.OfType<ResourceStateChangedAnnotation>().SingleOrDefault();
 
