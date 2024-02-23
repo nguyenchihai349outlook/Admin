@@ -5,13 +5,13 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 builder.AddAzureProvisioning();
 
-var sb = builder.AddAzureServiceBus("sb", queueNames: ["q2"]);
+var config = builder.AddAzureAppConfiguration("config");
 
 var redis = builder.AddRedis("redis");
 
 builder.AddProject<Projects.BicepSample_ApiService>("api")
-       .WithReference(sb)
-       .WithReference(redis);
+       .WithReference(redis)
+       .WithReference(config);
 
 // This project is only added in playground projects to support development/debugging
 // of the dashboard. It is not required in end developer code. Comment out this code

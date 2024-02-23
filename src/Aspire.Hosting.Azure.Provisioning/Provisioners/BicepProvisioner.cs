@@ -80,6 +80,8 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
 
     public override async Task GetOrCreateResourceAsync(AzureBicepResource resource, ProvisioningContext context, CancellationToken cancellationToken)
     {
+        var resourceProperties = resource.Annotations.OfType<DashboardPropertiesAnnotation>().Single();
+
         PopulateWellKnownParameters(resource, context);
         var azPath = FindFullPathFromPath("az") ??
             throw new InvalidOperationException("Azure CLI not found in PATH");
@@ -297,9 +299,14 @@ internal sealed class BicepProvisioner(ILogger<BicepProvisioner> logger) : Azure
                 }
             }
 
-            stateChange.ChangeState("Running");
-
             resource.ProvisionTask?.TrySetResult();
+
+            if (resource is IResourceWithConnectionString c)
+            {
+                resourceProperties.Properties["ConnectionString"] = c.GetConnectionString() ?? "";
+            }
+
+            stateChange.ChangeState("Running");
         }
         catch (Exception ex)
         {
