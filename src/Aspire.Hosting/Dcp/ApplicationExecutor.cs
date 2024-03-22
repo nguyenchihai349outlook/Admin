@@ -261,7 +261,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 
             // Find the associated application model resource and update it.
             string? resourceName = null;
-            resource.Metadata.Annotations?.TryGetValue(Executable.ResourceNameAnnotation, out resourceName);
+            resource.Metadata.Annotations?.TryGetValue(CustomResource.ResourceNameAnnotation, out resourceName);
 
             if (resourceName is not null &&
                 _applicationModel.TryGetValue(resourceName, out var appModelResource))
@@ -441,7 +441,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
         if (cr is not null)
         {
             string? appModelResourceName = null;
-            cr.Metadata.Annotations?.TryGetValue(Executable.ResourceNameAnnotation, out appModelResourceName);
+            cr.Metadata.Annotations?.TryGetValue(CustomResource.ResourceNameAnnotation, out appModelResourceName);
 
             if (appModelResourceName is not null &&
                 _applicationModel.TryGetValue(appModelResourceName, out var appModelResource))
@@ -948,37 +948,36 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
     private void PrepareServices()
     {
         var serviceProducers = _model.Resources
-            .Select(r => (ModelResource: r, SBAnnotations: r.Annotations.OfType<EndpointAnnotation>()))
-            .Where(sp => sp.SBAnnotations.Any());
+            .Select(r => (ModelResource: r, Endpoints: r.Annotations.OfType<EndpointAnnotation>()))
+            .Where(sp => sp.Endpoints.Any());
 
         // We need to ensure that Services have unique names (otherwise we cannot really distinguish between
         // services produced by different resources).
         HashSet<string> serviceNames = [];
 
-        void addServiceAppResource(Service svc, IResource producingResource, EndpointAnnotation sba)
-        {
-            svc.Spec.Protocol = PortProtocol.FromProtocolType(sba.Protocol);
-            svc.Annotate(CustomResource.UriSchemeAnnotation, sba.UriScheme);
-            svc.Annotate(CustomResource.LaunchProfileAnnotation, sba.FromLaunchProfile.ToString());
-            svc.Spec.AddressAllocationMode = sba.IsProxied ? AddressAllocationModes.Localhost : AddressAllocationModes.Proxyless;
-            _appResources.Add(new ServiceAppResource(producingResource, svc, sba));
-        }
-
         foreach (var sp in serviceProducers)
         {
-            var sbAnnotations = sp.SBAnnotations.ToArray();
+            var endpoints = sp.Endpoints.ToArray();
 
-            foreach (var sba in sbAnnotations)
+            foreach (var endpoint in endpoints)
             {
-                var candidateServiceName = sbAnnotations.Length == 1 ?
-                    GetObjectNameForResource(sp.ModelResource) : GetObjectNameForResource(sp.ModelResource, sba.Name);
+                var candidateServiceName = endpoints.Length == 1
+                    ? GetObjectNameForResource(sp.ModelResource)
+                    : GetObjectNameForResource(sp.ModelResource, endpoint.Name);
+
                 var uniqueServiceName = GenerateUniqueServiceName(serviceNames, candidateServiceName);
                 var svc = Service.Create(uniqueServiceName);
 
-                int? port = _options.Value.RandomizePorts is true && sba.IsProxied ? null : sba.Port;
+                var port = _options.Value.RandomizePorts is true && endpoint.IsProxied ? null : endpoint.Port;
                 svc.Spec.Port = port;
+                svc.Spec.Protocol = PortProtocol.FromProtocolType(endpoint.Protocol);
+                svc.Spec.AddressAllocationMode = endpoint.IsProxied ? AddressAllocationModes.Localhost : AddressAllocationModes.Proxyless;
 
-                addServiceAppResource(svc, sp.ModelResource, sba);
+                // So we can associate the service with the resource that produced it and the endpoint it represents.
+                svc.Annotate(CustomResource.ResourceNameAnnotation, sp.ModelResource.Name);
+                svc.Annotate(CustomResource.EndpointNameAnnotation, endpoint.Name);
+
+                _appResources.Add(new ServiceAppResource(sp.ModelResource, svc, endpoint));
             }
         }
     }
@@ -1002,8 +1001,8 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
             // The working directory is always relative to the app host project directory (if it exists).
             exe.Spec.WorkingDirectory = executable.WorkingDirectory;
             exe.Spec.ExecutionType = ExecutionType.Process;
-            exe.Annotate(Executable.OtelServiceNameAnnotation, exe.Metadata.Name);
-            exe.Annotate(Executable.ResourceNameAnnotation, executable.Name);
+            exe.Annotate(CustomResource.OtelServiceNameAnnotation, exe.Metadata.Name);
+            exe.Annotate(CustomResource.ResourceNameAnnotation, executable.Name);
 
             var exeAppResource = new AppResource(executable, exe);
             AddServicesProducedInfo(executable, exe, exeAppResource);
@@ -1029,8 +1028,8 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
             exeSpec.WorkingDirectory = Path.GetDirectoryName(projectMetadata.ProjectPath);
 
             IAnnotationHolder annotationHolder = ers.Spec.Template;
-            annotationHolder.Annotate(Executable.OtelServiceNameAnnotation, ers.Metadata.Name);
-            annotationHolder.Annotate(Executable.ResourceNameAnnotation, project.Name);
+            annotationHolder.Annotate(CustomResource.OtelServiceNameAnnotation, ers.Metadata.Name);
+            annotationHolder.Annotate(CustomResource.ResourceNameAnnotation, project.Name);
 
             var projectLaunchConfiguration = new ProjectLaunchConfiguration();
             projectLaunchConfiguration.ProjectPath = projectMetadata.ProjectPath;
@@ -1425,8 +1424,8 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 
             var ctr = Container.Create(GetObjectNameForResource(container), containerImageName);
 
-            ctr.Annotate(Container.ResourceNameAnnotation, container.Name);
-            ctr.Annotate(Container.OtelServiceNameAnnotation, container.Name);
+            ctr.Annotate(CustomResource.ResourceNameAnnotation, container.Name);
+            ctr.Annotate(CustomResource.OtelServiceNameAnnotation, container.Name);
 
             if (container.TryGetContainerMounts(out var containerMounts))
             {
