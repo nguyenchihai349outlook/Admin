@@ -624,8 +624,11 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
                     }
                 }
 
-                var endpointString = $"{ep.Scheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
-                urls.Add(new($"{ep.EndpointName}-listen-port", endpointString, true));
+                if (ep.EndpointAnnotation.IsProxied)
+                {
+                    var endpointString = $"{ep.Scheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
+                    urls.Add(new($"{ep.EndpointName}-listen-port", endpointString, true));
+                }
             }
         }
 
