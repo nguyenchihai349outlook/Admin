@@ -260,8 +260,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
             };
 
             // Find the associated application model resource and update it.
-            string? resourceName = null;
-            resource.Metadata.Annotations?.TryGetValue(CustomResource.ResourceNameAnnotation, out resourceName);
+            var resourceName = resource.AppModelResourceName;
 
             if (resourceName is not null &&
                 _applicationModel.TryGetValue(resourceName, out var appModelResource))
@@ -440,8 +439,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 
         if (cr is not null)
         {
-            string? appModelResourceName = null;
-            cr.Metadata.Annotations?.TryGetValue(CustomResource.ResourceNameAnnotation, out appModelResourceName);
+            var appModelResourceName = cr.AppModelResourceName;
 
             if (appModelResourceName is not null &&
                 _applicationModel.TryGetValue(appModelResourceName, out var appModelResource))
@@ -466,7 +464,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
     private CustomResourceSnapshot ToSnapshot(Container container, CustomResourceSnapshot previous)
     {
         var containerId = container.Status?.ContainerId;
-        var (endpointsWithMetadata, services) = GetEndpointsAndServices(container, "Container");
+        var urls = GetUrls(container);
 
         var environment = GetEnvironmentVariables(container.Status?.EffectiveEnv ?? container.Spec.Env, container.Spec.Env);
 
@@ -485,8 +483,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
             ],
             EnvironmentVariables = environment,
             CreationTimeStamp = container.Metadata.CreationTimestamp?.ToLocalTime(),
-            Endpoints = [.. endpointsWithMetadata.Select(e => (e.EndpointUrl, e.ProxyUrl))],
-            Services = services
+            Urls = urls
         };
 
         ImmutableArray<int> GetPorts()
@@ -522,51 +519,12 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
 #pragma warning restore CS0612
         }
 
-        string? resourceName = null;
-        executable.Metadata.Annotations?.TryGetValue(Executable.ResourceNameAnnotation, out resourceName);
-
-        var (endpointsWithMetadata, services) = GetEndpointsAndServices(executable, "Executable");
+        var urls = GetUrls(executable);
 
         var environment = GetEnvironmentVariables(executable.Status?.EffectiveEnv, executable.Spec.Env);
 
         if (projectPath is not null)
         {
-            var endpoints = endpointsWithMetadata.Select(e => (e.EndpointUrl, e.ProxyUrl));
-
-            if (resourceName is not null &&
-                _applicationModel.TryGetValue(resourceName, out var appModelResource) &&
-                appModelResource is ProjectResource p &&
-                p.GetEffectiveLaunchProfile() is LaunchProfile profile &&
-                profile.LaunchUrl is string launchUrl)
-            {
-                // Concat the launch url from the launch profile to the urls with IsFromLaunchProfile set to true
-
-                string CombineUrls(string url, string launchUrl)
-                {
-                    if (!launchUrl.Contains("://"))
-                    {
-                        // This is relative URL
-                        url += $"/{launchUrl}";
-                    }
-                    else
-                    {
-                        // For absolute URL we need to update the port value if possible
-                        if (profile.ApplicationUrl is string applicationUrl
-                            && launchUrl.StartsWith(applicationUrl))
-                        {
-                            url = launchUrl.Replace(applicationUrl, url);
-                        }
-                    }
-
-                    return url;
-                }
-
-                endpoints = endpointsWithMetadata.Select(e => e.IsFromLaunchProfile
-                    ? (CombineUrls(e.EndpointUrl, launchUrl), CombineUrls(e.ProxyUrl, launchUrl))
-                    : (e.EndpointUrl, e.ProxyUrl)
-                );
-            }
-
             return previous with
             {
                 ResourceType = KnownResourceTypes.Project,
@@ -581,8 +539,7 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
                 ],
                 EnvironmentVariables = environment,
                 CreationTimeStamp = executable.Metadata.CreationTimestamp?.ToLocalTime(),
-                Endpoints = [.. endpoints],
-                Services = services
+                Urls = urls
             };
         }
 
@@ -599,18 +556,15 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
             ],
             EnvironmentVariables = environment,
             CreationTimeStamp = executable.Metadata.CreationTimestamp?.ToLocalTime(),
-            Endpoints = [.. endpointsWithMetadata.Select(e => (e.EndpointUrl, e.ProxyUrl))],
-            Services = services
+            Urls = urls
         };
     }
 
-    private (ImmutableArray<(string EndpointUrl, string ProxyUrl, bool IsFromLaunchProfile)> Endpoints,
-            ImmutableArray<(string Name, string? AllocatedAddress, int? AllocatedPort)> Services)
-        GetEndpointsAndServices(CustomResource resource, string resourceKind)
+    private ImmutableArray<(string Name, string Url)> GetUrls(CustomResource resource)
     {
-        var endpoints = ImmutableArray.CreateBuilder<(string EndpointUrl, string ProxyUrl, bool IsFromLaunchProfile)>();
-        var services = ImmutableArray.CreateBuilder<(string Name, string? AllocatedAddress, int? AllocatedPort)>();
         var name = resource.Metadata.Name;
+
+        var urls = ImmutableArray.CreateBuilder<(string Name, string Url)>();
 
         foreach (var (_, endpoint) in _endpointsMap)
         {
@@ -619,38 +573,64 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
                 continue;
             }
 
-            if (endpoint.Spec.ServiceName is not null
-                && _servicesMap.TryGetValue(endpoint.Spec.ServiceName, out var service)
-                && service?.UsesHttpProtocol(out var uriScheme) == true)
+            if (endpoint.Spec.ServiceName is not null &&
+                _servicesMap.TryGetValue(endpoint.Spec.ServiceName, out var service) &&
+                service.AppModelResourceName is string resourceName &&
+                _applicationModel.TryGetValue(resourceName, out var appModelResource) &&
+                appModelResource is IResourceWithEndpoints resourceWithEndpoints &&
+                service.EndpointName is string endpointName)
             {
-                string? launchProfile = null;
-                service.Metadata.Annotations?.TryGetValue(CustomResource.LaunchProfileAnnotation, out launchProfile);
+                var ep = resourceWithEndpoints.GetEndpoint(endpointName);
 
-                var endpointString = $"{uriScheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
-                var proxyUrlString = $"{uriScheme}://{service.AllocatedAddress}:{service.AllocatedPort}";
-                var isFromLaunchProfile = false;
-
-                if (launchProfile is not null)
+                if (ep.EndpointAnnotation.FromLaunchProfile &&
+                    appModelResource is ProjectResource p &&
+                    p.GetEffectiveLaunchProfile() is LaunchProfile profile &&
+                    profile.LaunchUrl is string launchUrl)
                 {
-                    _ = bool.TryParse(launchProfile, out isFromLaunchProfile);
+                    // Concat the launch url from the launch profile to the urls with IsFromLaunchProfile set to true
+
+                    string CombineUrls(string url, string launchUrl)
+                    {
+                        if (!launchUrl.Contains("://"))
+                        {
+                            // This is relative URL
+                            url += $"/{launchUrl}";
+                        }
+                        else
+                        {
+                            // For absolute URL we need to update the port value if possible
+                            if (profile.ApplicationUrl is string applicationUrl
+                                && launchUrl.StartsWith(applicationUrl))
+                            {
+                                url = launchUrl.Replace(applicationUrl, url);
+                            }
+                        }
+
+                        return url;
+                    }
+
+                    if (ep.IsAllocated)
+                    {
+                        var url = CombineUrls(ep.Url, launchUrl);
+
+                        urls.Add(new(ep.EndpointName, url));
+                    }
+                }
+                else
+                {
+                    if (ep.IsAllocated)
+                    {
+                        urls.Add(new(ep.EndpointName, ep.Url));
+                    }
                 }
 
-                endpoints.Add(new(endpointString, proxyUrlString, isFromLaunchProfile));
+                // Do we also want to show the internal port?
+                //var endpointString = $"{ep.Scheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
+                //urls.Add(new($"{ep.EndpointName}-listen-port", endpointString));
             }
         }
 
-        if (_resourceAssociatedServicesMap.TryGetValue((resourceKind, name), out var resourceServiceMappings))
-        {
-            foreach (var serviceName in resourceServiceMappings)
-            {
-                if (_servicesMap.TryGetValue(serviceName, out var service))
-                {
-                    services.Add(new(service.Metadata.Name, service.AllocatedAddress, service.AllocatedPort));
-                }
-            }
-        }
-
-        return (endpoints.ToImmutable(), services.ToImmutable());
+        return urls.ToImmutable();
     }
 
     private static ImmutableArray<(string Name, string Value, bool IsFromSpec)> GetEnvironmentVariables(List<EnvVar>? effectiveSource, List<EnvVar>? specSource)
