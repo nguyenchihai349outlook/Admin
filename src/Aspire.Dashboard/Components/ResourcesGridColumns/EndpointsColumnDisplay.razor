@@ -23,7 +23,6 @@
         && (Resource.ExpectedEndpointsCount is null || Resource.ExpectedEndpointsCount > Resource.Urls.Length))
     {
         // If we're expecting more endpoints, say Starting..., unless the app isn't running anymore.
-        // Don't include service only endpoints in the list until finished loading endpoints.
         displayedEndpoints = GetEndpoints(Resource);
         additionalMessage = Loc[nameof(Columns.EndpointsColumnDisplayPlaceholder)];
     }

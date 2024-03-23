@@ -12,17 +12,20 @@ internal static class ResourceEndpointHelpers
     /// </summary>
     public static List<DisplayedEndpoint> GetEndpoints(ResourceViewModel resource, bool includeInteralUrls = false)
     {
+        static (Uri? Uri, bool IsValid) ParseUri(string url) =>
+            Uri.TryCreate(url, UriKind.Absolute, out var uri) ? (uri, true) : (null, false);
+
         return (from u in resource.Urls
-                let uri = new Uri(u.Url)
+                let parsedUri = ParseUri(u.Url)
                 let include = (includeInteralUrls && u.IsInternal) || !u.IsInternal
-                where include
+                where parsedUri.IsValid && include
                 select new DisplayedEndpoint
                 {
                     Name = u.Name,
                     Text = u.Url,
-                    Address = uri.Host,
-                    Port = uri.Port,
-                    Url = uri.Scheme is "http" or "https" ? u.Url : null
+                    Address = parsedUri.Uri!.Host,
+                    Port = parsedUri.Uri.Port,
+                    Url = parsedUri.Uri.Scheme is "http" or "https" ? u.Url : null
                 })
                 .ToList();
     }
