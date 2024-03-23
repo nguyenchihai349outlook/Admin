@@ -560,11 +560,11 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
         };
     }
 
-    private ImmutableArray<(string Name, string Url)> GetUrls(CustomResource resource)
+    private ImmutableArray<(string Name, string Url, bool IsInternal)> GetUrls(CustomResource resource)
     {
         var name = resource.Metadata.Name;
 
-        var urls = ImmutableArray.CreateBuilder<(string Name, string Url)>();
+        var urls = ImmutableArray.CreateBuilder<(string Name, string Url, bool IsInternal)>();
 
         foreach (var (_, endpoint) in _endpointsMap)
         {
@@ -613,20 +613,19 @@ internal sealed class ApplicationExecutor(ILogger<ApplicationExecutor> logger,
                     {
                         var url = CombineUrls(ep.Url, launchUrl);
 
-                        urls.Add(new(ep.EndpointName, url));
+                        urls.Add(new(ep.EndpointName, url, false));
                     }
                 }
                 else
                 {
                     if (ep.IsAllocated)
                     {
-                        urls.Add(new(ep.EndpointName, ep.Url));
+                        urls.Add(new(ep.EndpointName, ep.Url, false));
                     }
                 }
 
-                // Do we also want to show the internal port?
-                //var endpointString = $"{ep.Scheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
-                //urls.Add(new($"{ep.EndpointName}-listen-port", endpointString));
+                var endpointString = $"{ep.Scheme}://{endpoint.Spec.Address}:{endpoint.Spec.Port}";
+                urls.Add(new($"{ep.EndpointName}-listen-port", endpointString, true));
             }
         }
 

@@ -51,5 +51,5 @@ internal sealed class EnvironmentVariableSnapshot(string name, string? value, bo
     public bool IsFromSpec { get; } = isFromSpec;
 }
 
-internal sealed record UrlSnapshot(string Name, string Url);
+internal sealed record UrlSnapshot(string Name, string Url, bool IsInternal);
 

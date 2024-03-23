@@ -43,6 +43,6 @@ public sealed record CustomResourceSnapshot
     /// <summary>
     /// The URLs that should show up in the dashboard for this resource.
     /// </summary>
-    public ImmutableArray<(string Name, string Url)> Urls { get; init; } = [];
+    public ImmutableArray<(string Name, string Url, bool IsInternal)> Urls { get; init; } = [];
 
 }

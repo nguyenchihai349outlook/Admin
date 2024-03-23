@@ -31,7 +31,7 @@ partial class Resource
 
         foreach (var url in snapshot.Urls)
         {
-            resource.Urls.Add(new Url { Name = url.Name, FullUrl = url.Url });
+            resource.Urls.Add(new Url { Name = url.Name, FullUrl = url.Url, IsInternal = url.IsInternal });
         }
 
         foreach (var property in snapshot.Properties)

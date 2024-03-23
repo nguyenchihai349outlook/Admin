@@ -23,9 +23,9 @@ public partial class EndpointsColumnDisplay
     /// A resource has services and endpoints. These can overlap. This method attempts to return a single list without duplicates.
     /// </summary>
 #pragma warning disable CA1822 // Mark members as static
-    private List<DisplayedEndpoint> GetEndpoints(ResourceViewModel resource)
+    private List<DisplayedEndpoint> GetEndpoints(ResourceViewModel resource, bool includeInteralUrls = false)
 #pragma warning restore CA1822 // Mark members as static
     {
-        return ResourceEndpointHelpers.GetEndpoints(resource);
+        return ResourceEndpointHelpers.GetEndpoints(resource, includeInteralUrls);
     }
 }

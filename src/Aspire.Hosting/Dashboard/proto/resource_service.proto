@@ -111,6 +111,7 @@ message Service {
 message Url {
     string name = 1;
     string full_url = 2;
+    bool is_internal = 3;
 }
 
 message ResourceProperty {

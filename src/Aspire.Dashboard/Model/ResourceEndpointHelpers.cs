@@ -10,10 +10,12 @@ internal static class ResourceEndpointHelpers
     /// <summary>
     /// A resource has services and endpoints. These can overlap. This method attempts to return a single list without duplicates.
     /// </summary>
-    public static List<DisplayedEndpoint> GetEndpoints(ResourceViewModel resource)
+    public static List<DisplayedEndpoint> GetEndpoints(ResourceViewModel resource, bool includeInteralUrls = false)
     {
         return (from u in resource.Urls
                 let uri = new Uri(u.Url)
+                let include = (includeInteralUrls && u.IsInternal) || !u.IsInternal
+                where include
                 select new DisplayedEndpoint
                 {
                     Name = u.Name,

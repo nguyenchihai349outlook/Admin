@@ -95,14 +95,16 @@ public sealed class UrlViewModel
 {
     public string Name { get; }
     public string Url { get; }
+    public bool IsInternal { get; }
 
-    public UrlViewModel(string name, string url)
+    public UrlViewModel(string name, string url, bool isInternal)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
 
         Name = name;
         Url = url;
+        IsInternal = isInternal;
     }
 }
 

@@ -40,7 +40,7 @@ partial class Resource
         ImmutableArray<UrlViewModel> GetUrls()
         {
             return Urls
-                .Select(e => new UrlViewModel(e.Name, e.FullUrl))
+                .Select(e => new UrlViewModel(e.Name, e.FullUrl, e.IsInternal))
                 .ToImmutableArray();
         }
 

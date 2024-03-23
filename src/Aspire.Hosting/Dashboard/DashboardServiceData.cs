@@ -37,7 +37,7 @@ internal sealed class DashboardServiceData : IAsyncDisposable
 
                 ImmutableArray<UrlSnapshot> urls =
                 [
-                    ..snapshot.Urls.Select(u => new UrlSnapshot(u.Name, u.Url)),
+                    ..snapshot.Urls.Select(u => new UrlSnapshot(u.Name, u.Url, u.IsInternal)),
                 ];
 
                 return new GenericResourceSnapshot(snapshot)
