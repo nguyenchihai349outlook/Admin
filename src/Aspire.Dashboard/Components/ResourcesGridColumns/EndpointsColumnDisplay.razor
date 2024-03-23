@@ -4,8 +4,24 @@
 @inject IStringLocalizer<Columns> Loc
 
 @{
+    List<DisplayedEndpoint> displayedEndpoints;
     string? additionalMessage = null;
-    var displayedEndpoints = GetEndpoints(Resource);
+    if (Resource.Urls.Length == 0 && (Resource.State == ResourceStates.FinishedState || Resource.ExpectedEndpointsCount == 0))
+    {
+        displayedEndpoints = GetEndpoints(Resource);
+    }
+    else if (Resource.State != ResourceStates.FinishedState
+        && (Resource.ExpectedEndpointsCount is null || Resource.ExpectedEndpointsCount > Resource.Urls.Length))
+    {
+        // If we're expecting more endpoints, say Starting..., unless the app isn't running anymore.
+        // Don't include service only endpoints in the list until finished loading endpoints.
+        displayedEndpoints = GetEndpoints(Resource);
+        additionalMessage = Loc[nameof(Columns.EndpointsColumnDisplayPlaceholder)];
+    }
+    else
+    {
+        displayedEndpoints = GetEndpoints(Resource);
+    }
 }
 
 <FluentOverflow Class="endpoint-overflow">
