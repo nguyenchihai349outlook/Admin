@@ -8,7 +8,16 @@
     string? additionalMessage = null;
     if (Resource.Urls.Length == 0 && (Resource.State == ResourceStates.FinishedState || Resource.ExpectedEndpointsCount == 0))
     {
-        displayedEndpoints = GetEndpoints(Resource);
+        if (Resource.ExpectedEndpointsCount == 0)
+        {
+            // If we have no endpoints, and the app isn't running anymore or we're not expecting any, then just say None
+            additionalMessage = Loc[nameof(Columns.EndpointsColumnDisplayNone)];
+            displayedEndpoints = [];
+        }
+        else
+        {
+            displayedEndpoints = GetEndpoints(Resource);
+        }
     }
     else if (Resource.State != ResourceStates.FinishedState
         && (Resource.ExpectedEndpointsCount is null || Resource.ExpectedEndpointsCount > Resource.Urls.Length))

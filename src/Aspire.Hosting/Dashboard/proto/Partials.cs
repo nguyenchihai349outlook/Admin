@@ -24,6 +24,11 @@ partial class Resource
             resource.CreatedAt = Timestamp.FromDateTime(snapshot.CreationTimeStamp.Value.ToUniversalTime());
         }
 
+        if (snapshot.ExpectedEndpointsCount.HasValue)
+        {
+            resource.ExpectedEndpointsCount = snapshot.ExpectedEndpointsCount.Value;
+        }
+
         foreach (var env in snapshot.Environment)
         {
             resource.Environment.Add(new EnvironmentVariable { Name = env.Name, Value = env.Value ?? "", IsFromSpec = env.IsFromSpec });
