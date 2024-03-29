@@ -16,9 +16,9 @@ public static class DistributedApplicationHostingTestingExtensions
     /// <summary>
     /// Creates an <see cref="HttpClient"/> configured to communicate with the specified resource.
     /// </summary>
-    /// <param resourceName="app">The application.</param>
-    /// <param resourceName="resourceName">The resourceName of the resource.</param>
-    /// <param resourceName="endpointName">The resourceName of the endpoint on the resource to communicate with.</param>
+    /// <param name="app">The application.</param>
+    /// <param name="resourceName">The name of the resource.</param>
+    /// <param name="endpointName">The name of the endpoint on the resource to communicate with.</param>
     /// <returns>The <see cref="HttpClient"/>.</returns>
     public static HttpClient CreateHttpClient(this DistributedApplication app, string resourceName, string? endpointName = default)
     {
@@ -29,6 +29,15 @@ public static class DistributedApplicationHostingTestingExtensions
 
         return client;
     }
+
+    /// <summary>
+    /// Creates an <see cref="HttpClient"/> configured to communicate with the specified resource.
+    /// </summary>
+    /// <param name="app">The application.</param>
+    /// <param name="resource">The resource.</param>
+    /// <param name="endpointName">The name of the endpoint on the resource to communicate with.</param>
+    /// <returns>The <see cref="HttpClient"/>.</returns>
+    public static HttpClient CreateHttpClient(this DistributedApplication app, IResourceBuilder<IResource> resource, string? endpointName = default) => app.CreateHttpClient(resource.Resource.Name, endpointName);
 
     /// <summary>
     /// Gets the connection string for the specified resource.
@@ -48,6 +57,17 @@ public static class DistributedApplicationHostingTestingExtensions
 
         return resourceWithConnectionString.GetConnectionStringAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Gets the endpoint for the specified resource.
+    /// </summary>
+    /// <param name="app">The application.</param>
+    /// <param name="resourceBuilder">The resource builder.</param>
+    /// <param name="endpointName">The optional endpoint name. If none are specified, the single defined endpoint is returned.</param>
+    /// <returns>A URI representation of the endpoint.</returns>
+    /// <exception cref="ArgumentException">The resource was not found, no matching endpoint was found, or multiple endpoints were found.</exception>
+    /// <exception cref="InvalidOperationException">The resource has no endpoints.</exception>
+    public static Uri GetEndpoint(this DistributedApplication app, IResourceBuilder<IResource> resourceBuilder, string? endpointName = default) => new(GetEndpointUriStringCore(app, resourceBuilder.Resource.Name, endpointName));
 
     /// <summary>
     /// Gets the endpoint for the specified resource.
