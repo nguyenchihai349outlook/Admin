@@ -14,6 +14,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="ConfigurationDefaults.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="ConfigurationDefaults.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <PackageReference Include="System.CommandLine" />
 

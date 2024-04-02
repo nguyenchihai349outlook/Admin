@@ -41,6 +41,8 @@ internal sealed partial class ConfigSchemaEmitter(SchemaGenerationSpec spec, Com
         root["properties"] = GenerateGraph();
         root["type"] = "object";
 
+        ApplyConfigurationDefaults(root);
+
         return JsonSerializer.Serialize(root, s_serializerOptions);
     }
 
@@ -503,6 +505,38 @@ internal sealed partial class ConfigSchemaEmitter(SchemaGenerationSpec spec, Com
             result[i] = $"$.{exclusionPaths[i].Replace(":", ".properties.", StringComparison.Ordinal)}";
         }
         return result;
+    }
+
+    /// <summary>
+    /// Enriches a <see cref="JsonDocument"/> with default properties defined in the embedded "ConfigurationDefault.json".
+    /// </summary>
+    private static void ApplyConfigurationDefaults(JsonObject root)
+    {
+        // Read the ConfigurationDefault.json file from the embedded resources
+        using var stream = typeof(ConfigSchemaEmitter).Assembly.GetManifestResourceStream("ConfigurationSchemaGenerator.ConfigurationDefaults.json");
+        var defaults = JsonNode.Parse(stream) as JsonObject;
+
+        MergeProperties(root, defaults);
+    }
+
+    internal static void MergeProperties(JsonObject target, JsonObject source)
+    {
+        foreach (var (key, value) in source)
+        {
+            if (target.TryGetPropertyValue(key, out var targetValue))
+            {
+                // target has the source property, if it's an object, merge the properties
+                if (targetValue is JsonObject targetObject && value is JsonObject sourceObject)
+                {
+                    MergeProperties(targetObject, sourceObject);
+                }
+            }
+            // target doesn't exist and value is a not a JsonObject, set the value
+            else if (value is not JsonObject)
+            {
+                target[key] = value.DeepClone();
+            }
+        }
     }
 
     private sealed class SchemaOrderJsonNodeConverter : JsonConverter<JsonNode>

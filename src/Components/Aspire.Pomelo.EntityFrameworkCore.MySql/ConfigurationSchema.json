@@ -93,7 +93,8 @@
             }
           }
         }
-      }
+      },
+      "description": "Provides the configuration settings for the Aspire application."
     }
   },
   "type": "object"

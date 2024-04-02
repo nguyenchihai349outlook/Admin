@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "Aspire": {
+      "type": "object",
+      "description": "Provides the configuration settings for the Aspire application.",
+      "properties": {
+        "Azure": {
+          "type": "object",
+          "description": "Provides the configuration settings for the Azure section."
+        }
+      }
+    }
+  }
+}

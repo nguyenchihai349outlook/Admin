@@ -180,9 +180,11 @@
                 }
               }
             }
-          }
+          },
+          "description": "Provides the configuration settings for the Azure section."
         }
-      }
+      },
+      "description": "Provides the configuration settings for the Aspire application."
     }
   },
   "type": "object"
