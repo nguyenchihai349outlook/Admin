@@ -62,6 +62,7 @@ internal sealed partial class ServiceEndpointWatcher(
     {
         ThrowIfNoProviders();
         ObjectDisposedException.ThrowIf(_disposalCancellation.IsCancellationRequested, this);
+        cancellationToken.ThrowIfCancellationRequested();
 
         // If the cache is valid, return the cached value.
         if (_cachedEndpoints is { ChangeToken.HasChanged: false } cached)
@@ -78,9 +79,11 @@ internal sealed partial class ServiceEndpointWatcher(
             ServiceEndpointSource? result;
             do
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await RefreshAsync(force: false).WaitAsync(cancellationToken).ConfigureAwait(false);
                 result = _cachedEndpoints;
             } while (result is null);
+
             return result;
         }
     }

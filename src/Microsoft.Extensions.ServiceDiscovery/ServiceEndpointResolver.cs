@@ -49,6 +49,7 @@ public sealed class ServiceEndpointResolver : IAsyncDisposable
         while (true)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            cancellationToken.ThrowIfCancellationRequested();
             var resolver = _resolvers.GetOrAdd(
                 serviceName,
                 static (name, self) => self.CreateResolver(name),
