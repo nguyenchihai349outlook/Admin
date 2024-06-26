@@ -100,7 +100,7 @@
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.0" />
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.7.1" />
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="4.7.0" />
-    <PackageVersion Include="MongoDB.Driver" Version="2.24.0" />
+    <PackageVersion Include="MongoDB.Driver" Version="2.26.0" />
     <PackageVersion Include="MongoDB.Driver.Core.Extensions.DiagnosticSources" Version="1.4.0" />
     <PackageVersion Include="MySqlConnector.DependencyInjection" Version="2.3.6" />
     <PackageVersion Include="MySqlConnector.Logging.Microsoft.Extensions.Logging" Version="2.1.0" />
